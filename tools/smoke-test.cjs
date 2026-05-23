@@ -37,13 +37,14 @@ async function main() {
       ladder: stdout.includes("사다리"),
       winner: stdout.includes("선정"),
       passwordRequest: stdout.includes("비번 요청"),
-      messages: stdout.includes("messages=5"),
+      messages: stdout.includes("messages=6"),
       files: stdout.includes("files=1"),
+      replies: stdout.includes("replies=1"),
       messageMenu: stdout.includes("쪽지"),
       fileMenu: stdout.includes("파일"),
       excelExport: stdout.includes("download-excel"),
       publishedDraw: stdout.includes("publishedDraws=1"),
-      deliveredStatus: stdout.includes("전달 완료"),
+      replyForm: stdout.includes("답장 보내기"),
     };
 
     if (Object.values(checks).some((value) => !value)) {

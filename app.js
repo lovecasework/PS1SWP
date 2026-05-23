@@ -361,7 +361,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} publishedDraws=${result.publishedDraws}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws}
     </div>
   `;
 }
@@ -827,12 +827,24 @@ function renderMessages() {
 
 function renderMessageItem(message) {
   const incoming = message.toId === currentUser.id;
+  const canReply = incoming && isManager() && state.users[message.fromId] && isApprovedUser(state.users[message.fromId]);
   return `
     <article class="message-item ${incoming ? "incoming" : "outgoing"}">
       <div>
         <strong>${incoming ? `보낸 사람 ${escapeHtml(adminDisplayName(message.fromName))}` : `받는 사람 ${escapeHtml(adminDisplayName(message.toName))}`}</strong>
         <span>${formatDateTime(message.createdAt)}</span>
         <p>${escapeHtml(message.text)}</p>
+        ${
+          canReply
+            ? `
+              <form class="reply-form" data-form="reply-message">
+                <input type="hidden" name="messageId" value="${message.id}" />
+                <textarea name="text" rows="3" maxlength="500" required placeholder="답장 내용을 입력하세요"></textarea>
+                <button class="secondary-btn" type="submit">답장 보내기</button>
+              </form>
+            `
+            : ""
+        }
       </div>
       ${
         incoming && isManager()
@@ -1160,6 +1172,7 @@ async function handleSubmit(event) {
     if (formType === "application") await saveApplication(data);
     if (formType === "draw") await runDraw(data);
     if (formType === "message") await sendMessage(data);
+    if (formType === "reply-message") await replyMessage(data);
     if (formType === "file-submission") await saveFileSubmission(data);
   } catch (error) {
     alert(error.message || "처리 중 문제가 생겼습니다.");
@@ -1890,6 +1903,13 @@ async function runLocalSmoke() {
     });
 
     await login({ name: "PS1", password: "10041005" });
+    const incomingMessage = messageList().find((message) => message.toId === ADMIN_ID);
+    if (incomingMessage) {
+      await replyMessage({
+        messageId: incomingMessage.id,
+        text: "답장 테스트입니다.",
+      });
+    }
     const firstStudent = userList().find((user) => user.name === students[0].name);
     await sendMessage({
       toId: firstStudent.id,
@@ -1898,7 +1918,7 @@ async function runLocalSmoke() {
     await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
     const latestDraw = drawList()[0];
     if (latestDraw) await publishDrawResult(latestDraw.id);
-    ui.view = "admin-draws";
+    ui.view = "messages";
 
     window.__PS1SWP_SMOKE_RESULT = {
       ok: true,
@@ -1908,6 +1928,7 @@ async function runLocalSmoke() {
       draws: drawList().length,
       messages: messageList().length,
       files: fileSubmissionList().length,
+      replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
     };
   } catch (error) {
@@ -1961,6 +1982,39 @@ async function sendMessage({ toId, text }) {
   });
 
   alert("쪽지를 보냈습니다.");
+}
+
+async function replyMessage({ messageId, text }) {
+  requireManager();
+  const original = state.messages[messageId];
+  if (!original || original.toId !== currentUser.id) {
+    throw new Error("받은 쪽지에만 답장할 수 있습니다.");
+  }
+
+  const toUser = state.users[original.fromId];
+  const cleanText = String(text || "").trim();
+  if (!toUser || !isApprovedUser(toUser)) throw new Error("답장 받을 사용자를 찾을 수 없습니다.");
+  if (!cleanText) throw new Error("답장 내용을 입력해주세요.");
+  if (!canSendMessageTo(currentUser, toUser)) {
+    throw new Error("쪽지는 관리자와 실습생 사이에서만 보낼 수 있습니다.");
+  }
+
+  const id = createId("message");
+  await saveNode(`messages/${id}`, {
+    id,
+    fromId: currentUser.id,
+    fromName: adminDisplayName(currentUser.name),
+    fromRole: currentUser.role,
+    toId: toUser.id,
+    toName: adminDisplayName(toUser.name),
+    toRole: toUser.role,
+    text: cleanText.slice(0, 500),
+    deletedFor: {},
+    replyTo: original.id,
+    createdAt: new Date().toISOString(),
+  });
+
+  alert("답장을 보냈습니다.");
 }
 
 async function deleteMessage(id) {

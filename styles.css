@@ -829,6 +829,23 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.reply-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.reply-form textarea {
+  min-height: 78px;
+  background: #f9faff;
+}
+
+.reply-form .secondary-btn {
+  justify-self: start;
+}
+
 .file-item {
   border-left: 4px solid var(--blue);
 }
