@@ -362,7 +362,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -908,12 +908,14 @@ function renderMessageItem(message) {
   const incoming = message.toId === currentUser.id;
   const visibleToCurrentUser = message.toId === currentUser.id || message.fromId === currentUser.id;
   const canReply = incoming && isManager() && message.fromId && message.fromId !== currentUser.id;
+  const drawAttachment = renderMessageDrawAttachment(message);
   return `
     <article class="message-item ${incoming ? "incoming" : "outgoing"}">
       <div>
         <strong>${incoming ? `보낸 사람 ${escapeHtml(adminDisplayName(message.fromName))}` : `받는 사람 ${escapeHtml(adminDisplayName(message.toName))}`}</strong>
         <span>${formatDateTime(message.createdAt)}</span>
         <p>${escapeHtml(message.text)}</p>
+        ${drawAttachment}
         ${
           canReply
             ? `
@@ -932,6 +934,24 @@ function renderMessageItem(message) {
           : ""
       }
     </article>
+  `;
+}
+
+function renderMessageDrawAttachment(message) {
+  const draw = message.drawId ? state.draws[message.drawId] : null;
+  if (!draw || !draw.publishedAt) return "";
+
+  return `
+    <div class="message-draw-attachment">
+      <div class="message-draw-head">
+        <strong>사다리 결과 그림</strong>
+        <span>${escapeHtml(draw.siteName)} ${draw.priority}순위 · ${formatDateTime(draw.createdAt)}</span>
+      </div>
+      ${renderLadderSvg(draw)}
+      <div class="row-actions left">
+        <button class="secondary-btn" type="button" data-action="download-draw" data-id="${draw.id}">결과 이미지</button>
+      </div>
+    </div>
   `;
 }
 
@@ -1084,7 +1104,7 @@ function renderStudentSiteItem(site) {
 
 function renderStudentStatus() {
   const application = state.applications[currentUser.id];
-  const relatedDraws = drawList().filter((draw) => draw.participantIds?.includes(currentUser.id));
+  const relatedDraws = drawList().filter((draw) => draw.publishedAt && draw.participantIds?.includes(currentUser.id));
 
   return `
     <section class="panel">
@@ -2058,6 +2078,7 @@ async function runLocalSmoke() {
       files: fileSubmissionList().length,
       replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
+      drawMessageImages: messageList().filter((message) => message.drawId && state.draws[message.drawId]?.publishedAt).length,
       uniqueChoices: applicationList().every((application) => new Set(application.choices || []).size === (application.choices || []).length),
     };
   } catch (error) {

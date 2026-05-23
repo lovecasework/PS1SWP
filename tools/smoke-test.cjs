@@ -45,6 +45,7 @@ async function main() {
       fileMenu: stdout.includes("파일"),
       excelExport: stdout.includes("download-excel"),
       publishedDraw: stdout.includes("publishedDraws=1"),
+      drawMessageImages: stdout.includes("drawMessageImages=3") && stdout.includes("message-draw-attachment"),
       replyForm: stdout.includes("답장 보내기"),
       deleteMessageButtons: (stdout.match(/delete-message/g) || []).length >= 2,
       uniqueChoices: stdout.includes("uniqueChoices=true"),

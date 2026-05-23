@@ -918,6 +918,41 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.message-draw-attachment {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #dfe4fb;
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.message-draw-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.message-draw-head strong,
+.message-draw-head span {
+  display: block;
+}
+
+.message-draw-head span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.message-draw-attachment .ladder-scroll {
+  margin-top: 8px;
+}
+
+.message-draw-attachment .ladder-svg {
+  min-width: 520px;
+}
+
 .reply-form {
   display: grid;
   gap: 8px;
