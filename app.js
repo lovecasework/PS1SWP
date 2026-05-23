@@ -1,6 +1,7 @@
 const app = document.querySelector("#app");
 
-const ADMIN_ID = "admin-pswp";
+const ADMIN_ID = "admin-ps1";
+const LEGACY_ADMIN_ID = "admin-pswp";
 const ADMIN_USER = {
   id: ADMIN_ID,
   name: "PS1",
@@ -92,6 +93,20 @@ async function refreshData() {
 }
 
 async function ensureAdminUser() {
+  if (state.users[LEGACY_ADMIN_ID] && !state.users[ADMIN_ID]) {
+    await saveNode(`users/${ADMIN_ID}`, {
+      ...state.users[LEGACY_ADMIN_ID],
+      id: ADMIN_ID,
+      name: ADMIN_USER.name,
+      password: ADMIN_USER.password,
+      role: ADMIN_USER.role,
+      status: ADMIN_USER.status,
+      migratedFrom: LEGACY_ADMIN_ID,
+      updatedAt: new Date().toISOString(),
+    });
+    await deleteNode(`users/${LEGACY_ADMIN_ID}`);
+  }
+
   const admin = state.users[ADMIN_ID];
 
   if (!admin) {
@@ -153,8 +168,8 @@ function renderAuth() {
         <img src="./assets/ps1-logo.jpg" alt="PS1SWP 로고" class="brand-logo" />
         <div>
           <p class="eyebrow">사회복지현장실습</p>
-          <h1>PS1SWP</h1>
-          <p class="brand-copy">실습 신청부터 승인, 배정, 사다리 추첨까지 한 곳에서 관리합니다.</p>
+          <h1 class="program-title">PS1 사회복지현장실습 관리 프로그램</h1>
+          <p class="brand-copy">실습 신청부터 승인, 배정, 문서관리까지 한 번에 관리합니다.</p>
         </div>
       </section>
 
@@ -235,7 +250,7 @@ function renderAuthForm() {
     <form class="stack" data-form="login">
       <div class="form-row">
         <label for="login-name">이름 또는 관리자 ID</label>
-        <input id="login-name" name="name" autocomplete="username" required maxlength="20" placeholder="학생은 이름, 관리자는 PS1을 입력하세요" />
+        <input id="login-name" name="name" autocomplete="username" required maxlength="20" />
       </div>
       <div class="notice">비밀번호는 8자리 숫자입니다.</div>
       <div class="form-row">
@@ -243,7 +258,6 @@ function renderAuthForm() {
         ${passwordField("login-password", "password", "8자리 숫자")}
       </div>
       <button class="primary-btn" type="submit">입장</button>
-      <p class="admin-hint">관리자 기본값: ID PS1 / 비밀번호 10041005</p>
     </form>
   `;
 }

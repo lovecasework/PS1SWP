@@ -127,6 +127,16 @@ p {
   line-height: 1;
 }
 
+.brand-panel .program-title {
+  max-width: 620px;
+  font-family:
+    Arial,
+    "Noto Sans KR",
+    sans-serif;
+  font-size: clamp(2rem, 4vw, 3.45rem);
+  line-height: 1.14;
+}
+
 .brand-copy {
   max-width: 420px;
   margin: 18px 0 0;
