@@ -1,0 +1,41 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "users": {
+      "$uid": {
+        ".validate": "newData.hasChildren(['id', 'name', 'password', 'role', 'status'])"
+      }
+    },
+    "sites": {
+      "$siteId": {
+        ".validate": "newData.hasChildren(['id', 'name', 'capacity', 'createdAt'])"
+      }
+    },
+    "applications": {
+      "$userId": {
+        ".validate": "newData.hasChildren(['userId', 'choices', 'updatedAt'])"
+      }
+    },
+    "passwordRequests": {
+      "$requestId": {
+        ".validate": "newData.hasChildren(['id', 'name', 'studentYear', 'status', 'createdAt'])"
+      }
+    },
+    "draws": {
+      "$drawId": {
+        ".validate": "newData.hasChildren(['id', 'siteId', 'siteName', 'priority', 'createdAt', 'results'])"
+      }
+    },
+    "messages": {
+      "$messageId": {
+        ".validate": "newData.hasChildren(['id', 'fromId', 'toId', 'text', 'createdAt'])"
+      }
+    },
+    "fileSubmissions": {
+      "$fileId": {
+        ".validate": "newData.hasChildren(['id', 'userId', 'title', 'driveUrl', 'status', 'createdAt'])"
+      }
+    }
+  }
+}
