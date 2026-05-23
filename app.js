@@ -827,7 +827,8 @@ function renderMessages() {
 
 function renderMessageItem(message) {
   const incoming = message.toId === currentUser.id;
-  const canReply = incoming && isManager() && state.users[message.fromId] && isApprovedUser(state.users[message.fromId]);
+  const visibleToCurrentUser = message.toId === currentUser.id || message.fromId === currentUser.id;
+  const canReply = incoming && isManager() && message.fromId && message.fromId !== currentUser.id;
   return `
     <article class="message-item ${incoming ? "incoming" : "outgoing"}">
       <div>
@@ -847,7 +848,7 @@ function renderMessageItem(message) {
         }
       </div>
       ${
-        incoming && isManager()
+        visibleToCurrentUser && isManager()
           ? `<button class="danger-btn" type="button" data-action="delete-message" data-id="${message.id}">삭제</button>`
           : ""
       }
@@ -1991,9 +1992,14 @@ async function replyMessage({ messageId, text }) {
     throw new Error("받은 쪽지에만 답장할 수 있습니다.");
   }
 
-  const toUser = state.users[original.fromId];
+  const toUser = state.users[original.fromId] || {
+    id: original.fromId,
+    name: original.fromName || "수신자",
+    role: original.fromRole || "student",
+    status: "approved",
+  };
   const cleanText = String(text || "").trim();
-  if (!toUser || !isApprovedUser(toUser)) throw new Error("답장 받을 사용자를 찾을 수 없습니다.");
+  if (!toUser.id) throw new Error("답장 받을 사용자를 찾을 수 없습니다.");
   if (!cleanText) throw new Error("답장 내용을 입력해주세요.");
   if (!canSendMessageTo(currentUser, toUser)) {
     throw new Error("쪽지는 관리자와 실습생 사이에서만 보낼 수 있습니다.");
@@ -2020,8 +2026,8 @@ async function replyMessage({ messageId, text }) {
 async function deleteMessage(id) {
   requireManager();
   const message = state.messages[id];
-  if (!message || message.toId !== currentUser.id) {
-    throw new Error("자기에게 온 쪽지만 삭제할 수 있습니다.");
+  if (!message || (message.toId !== currentUser.id && message.fromId !== currentUser.id)) {
+    throw new Error("내가 주고받은 쪽지만 삭제할 수 있습니다.");
   }
   if (!confirm("이 쪽지를 삭제할까요?")) return;
   await patchNode(`messages/${id}`, {

@@ -45,6 +45,7 @@ async function main() {
       excelExport: stdout.includes("download-excel"),
       publishedDraw: stdout.includes("publishedDraws=1"),
       replyForm: stdout.includes("답장 보내기"),
+      deleteMessageButtons: (stdout.match(/delete-message/g) || []).length >= 2,
     };
 
     if (Object.values(checks).some((value) => !value)) {
