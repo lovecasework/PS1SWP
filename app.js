@@ -362,7 +362,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -374,6 +374,7 @@ function getNavItems() {
       { id: "admin-approvals", label: "승인", icon: "✓" },
       { id: "admin-users", label: "사용자", icon: "◎" },
       { id: "admin-sites", label: "실습지", icon: "+" },
+      { id: "admin-applications", label: "신청서", icon: "▤" },
       { id: "admin-draws", label: "사다리", icon: "⌘" },
       { id: "messages", label: "쪽지", icon: "✉" },
       { id: "file-submissions", label: "파일", icon: "↗" },
@@ -401,6 +402,8 @@ function renderCurrentView() {
       return renderAdminUsers();
     case "admin-sites":
       return renderAdminSites();
+    case "admin-applications":
+      return renderAdminApplications();
     case "admin-draws":
       return renderAdminDraws();
     case "messages":
@@ -610,12 +613,87 @@ function renderAdminSiteItem(site) {
   `;
 }
 
-function renderAdminDraws() {
-  const sites = siteList();
+function renderAdminApplications() {
+  return `
+    ${renderApplicationGroupsPanel()}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>최근 사다리 추첨</h2>
+        <span class="count-badge">${drawList().length}회</span>
+      </div>
+      ${renderDrawHistory({ compact: true })}
+    </section>
+  `;
+}
+
+function renderApplicationGroupsPanel() {
+  const groups = applicationGroupList();
+  const applicantCount = groups.reduce((total, group) => total + group.applications.length, 0);
   return `
     <section class="panel">
       <div class="panel-head">
-        <h2>사다리 추첨</h2>
+        <h2>1순위 신청서 목록</h2>
+        <span class="count-badge">${groups.length}개 실습지 · ${applicantCount}명</span>
+      </div>
+      ${
+        groups.length
+          ? `<div class="application-groups">${groups.map(renderApplicationGroupCard).join("")}</div>`
+          : emptyState("아직 1순위로 접수된 신청서가 없습니다.")
+      }
+    </section>
+  `;
+}
+
+function renderApplicationGroupCard(group) {
+  const { site, applications } = group;
+  const winnerMax = Math.max(1, applications.length);
+  const defaultWinnerCount = Math.min(Number(site.capacity || 1), winnerMax);
+  const inputId = `application-winner-${site.id}`;
+  return `
+    <article class="application-card">
+      <div class="application-card-head">
+        <div>
+          <strong>${escapeHtml(site.name)}</strong>
+          <span>1순위 신청 ${applications.length}명 · 모집 ${Number(site.capacity || 1)}명</span>
+        </div>
+        <form class="application-draw-form" data-form="draw">
+          <input type="hidden" name="siteId" value="${escapeAttr(site.id)}" />
+          <input type="hidden" name="priority" value="1" />
+          <label for="${escapeAttr(inputId)}">당첨자 수</label>
+          <input id="${escapeAttr(inputId)}" name="winnerCount" type="number" min="1" max="${winnerMax}" value="${defaultWinnerCount}" required />
+          <button class="primary-btn" type="submit">이 신청서로 사다리 실행</button>
+        </form>
+      </div>
+      <div class="application-table">
+        ${applications.map(renderApplicationRow).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function renderApplicationRow(item) {
+  const { application, user } = item;
+  return `
+    <div class="application-row">
+      <div>
+        <strong>${escapeHtml(user.name)}</strong>
+        <span>${formatYear(user.studentYear || application.studentYear)} · ${formatDateTime(application.updatedAt)}</span>
+      </div>
+      <div class="choice-pills">
+        <span>2순위 ${escapeHtml(siteName(choiceAt(application.choices, 1)) || "-")}</span>
+        <span>3순위 ${escapeHtml(siteName(choiceAt(application.choices, 2)) || "-")}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminDraws() {
+  const sites = siteList();
+  return `
+    ${renderApplicationGroupsPanel()}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>직접 사다리 추첨</h2>
         <span class="count-badge">반복 실행 가능</span>
       </div>
       <form class="draw-form" data-form="draw">
@@ -1974,6 +2052,7 @@ async function runLocalSmoke() {
       users: userList().length,
       sites: siteList().length,
       applications: applicationList().length,
+      applicationGroups: applicationGroupList().length,
       draws: drawList().length,
       messages: messageList().length,
       files: fileSubmissionList().length,
@@ -2135,8 +2214,27 @@ function getDrawParticipants(siteId, priority) {
   return applicationList()
     .filter((application) => choiceAt(application.choices, priority - 1) === siteId)
     .map((application) => users[application.userId])
-    .filter((user) => user && user.status === "approved" && user.role !== "admin")
+    .filter((user) => user && user.status === "approved" && !isManager(user))
     .sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+}
+
+function applicationGroupList() {
+  const users = state.users || {};
+  return siteList()
+    .map((site) => {
+      const applications = applicationList()
+        .filter((application) => choiceAt(application.choices, 0) === site.id)
+        .map((application) => ({
+          application,
+          user: users[application.userId],
+        }))
+        .filter(({ user }) => user && user.status === "approved" && !isManager(user))
+        .sort((a, b) => String(a.user.name).localeCompare(String(b.user.name), "ko"));
+
+      return { site, applications };
+    })
+    .filter((group) => group.applications.length)
+    .sort((a, b) => String(a.site.name).localeCompare(String(b.site.name), "ko"));
 }
 
 function findUserForPasswordRequest(request) {

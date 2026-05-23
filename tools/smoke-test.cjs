@@ -34,6 +34,7 @@ async function main() {
     const checks = {
       smokePass: stdout.includes("SMOKE_PASS"),
       loginTitle: stdout.includes("PS1SWP"),
+      applicationGroups: stdout.includes("applicationGroups=1"),
       ladder: stdout.includes("사다리"),
       winner: stdout.includes("선정"),
       passwordRequest: stdout.includes("비번 요청"),
