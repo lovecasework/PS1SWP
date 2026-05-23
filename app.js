@@ -48,6 +48,7 @@ let ui = {
 
 document.addEventListener("DOMContentLoaded", init);
 document.addEventListener("click", handleClick);
+document.addEventListener("change", handleChange);
 document.addEventListener("submit", handleSubmit);
 
 async function init() {
@@ -361,7 +362,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -933,6 +934,13 @@ function renderStudentApply() {
   const sites = siteList();
   const application = state.applications[currentUser.id] || {};
   const choiceCount = Math.min(3, sites.length);
+  const savedChoices = Array.from({ length: choiceCount }, (_, index) => choiceAt(application.choices, index));
+  const seenChoices = new Set();
+  const selectedChoices = savedChoices.map((choice) => {
+    if (!choice || seenChoices.has(choice)) return "";
+    seenChoices.add(choice);
+    return choice;
+  });
 
   return `
     <section class="split-layout student-layout">
@@ -944,7 +952,7 @@ function renderStudentApply() {
         ${
           choiceCount
             ? Array.from({ length: choiceCount }, (_, index) =>
-                renderChoiceSelect(index + 1, application.choices?.[index] || "", sites),
+                renderChoiceSelect(index + 1, selectedChoices[index] || "", sites, selectedChoices),
               ).join("")
             : emptyState("관리자가 실습지를 등록하면 신청할 수 있습니다.")
         }
@@ -962,20 +970,21 @@ function renderStudentApply() {
   `;
 }
 
-function renderChoiceSelect(priority, selected, sites) {
+function renderChoiceSelect(priority, selected, sites, selectedChoices = []) {
   return `
     <div class="form-row">
       <label for="choice-${priority}">${priority}순위</label>
-      <select id="choice-${priority}" name="priority${priority}" required>
+      <select id="choice-${priority}" name="priority${priority}" data-choice-select required>
         <option value="">실습지 선택</option>
         ${sites
-          .map(
-            (site) => `
-              <option value="${site.id}" ${selected === site.id ? "selected" : ""}>
-                ${escapeHtml(site.name)} · 모집 ${Number(site.capacity || 1)}명
+          .map((site) => {
+            const selectedElsewhere = selectedChoices.some((choice, index) => index !== priority - 1 && choice === site.id);
+            return `
+              <option value="${site.id}" ${selected === site.id ? "selected" : ""} ${selectedElsewhere ? "disabled" : ""}>
+                ${escapeHtml(site.name)} · 모집 ${Number(site.capacity || 1)}명${selectedElsewhere ? " · 이미 선택됨" : ""}
               </option>
-            `,
-          )
+            `;
+          })
           .join("")}
       </select>
     </div>
@@ -1154,6 +1163,45 @@ async function handleClick(event) {
   if (action === "delete-file") await deleteFileSubmission(id);
 
   render();
+}
+
+function handleChange(event) {
+  const select = event.target.closest("[data-choice-select]");
+  if (!select) return;
+  syncUniqueChoiceSelects(select);
+}
+
+function syncUniqueChoiceSelects(changedSelect) {
+  const form = changedSelect.closest("form[data-form='application']");
+  if (!form) return;
+
+  const selects = Array.from(form.querySelectorAll("[data-choice-select]"));
+  const seen = new Map();
+  for (const select of selects) {
+    if (!select.value) continue;
+    if (seen.has(select.value)) {
+      if (select === changedSelect) {
+        seen.get(select.value).value = "";
+      } else {
+        select.value = "";
+      }
+    }
+    if (select.value) {
+      seen.set(select.value, select);
+    }
+  }
+
+  const selectedValues = selects.map((select) => select.value).filter(Boolean);
+  for (const select of selects) {
+    for (const option of select.options) {
+      if (!option.value) continue;
+      option.disabled = selectedValues.includes(option.value) && select.value !== option.value;
+      const site = state.sites[option.value];
+      if (site) {
+        option.textContent = `${site.name} · 모집 ${Number(site.capacity || 1)}명${option.disabled ? " · 이미 선택됨" : ""}`;
+      }
+    }
+  }
 }
 
 async function handleSubmit(event) {
@@ -1931,6 +1979,7 @@ async function runLocalSmoke() {
       files: fileSubmissionList().length,
       replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
+      uniqueChoices: applicationList().every((application) => new Set(application.choices || []).size === (application.choices || []).length),
     };
   } catch (error) {
     window.__PS1SWP_SMOKE_RESULT = {
