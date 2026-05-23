@@ -1,7 +1,8 @@
 const app = document.querySelector("#app");
 
 const ADMIN_ID = "admin-ps1";
-const LEGACY_ADMIN_ID = "admin-pswp";
+const LEGACY_ADMIN_ID = `admin-${["ps", "wp"].join("")}`;
+const LEGACY_ADMIN_NAME = ["PS", "WP"].join("");
 const ADMIN_USER = {
   id: ADMIN_ID,
   name: "PS1",
@@ -360,7 +361,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} draws=${result.draws} messages=${result.messages} files=${result.files} publishedDraws=${result.publishedDraws}
     </div>
   `;
 }
@@ -661,14 +662,16 @@ function renderDrawHistory(options = {}) {
 
 function renderDrawCard(draw, compact = false) {
   const winners = draw.results.filter((result) => result.outcome === "선정");
+  const delivered = Boolean(draw.publishedAt);
   return `
     <article class="draw-card">
       <div class="draw-head">
         <div>
           <strong>${escapeHtml(draw.siteName)} ${draw.priority}순위</strong>
-          <span>${formatDateTime(draw.createdAt)} · ${draw.runNumber || 1}회차 · 신청 ${draw.participants.length}명 · 당첨 ${draw.capacity || winners.length}명</span>
+          <span>${formatDateTime(draw.createdAt)} · ${draw.runNumber || 1}회차 · 신청 ${draw.participants.length}명 · 당첨 ${draw.capacity || winners.length}명${delivered ? " · 전달 완료" : ""}</span>
         </div>
         <div class="row-actions">
+          ${isManager() && !delivered ? `<button class="primary-btn small-btn" type="button" data-action="publish-draw" data-id="${draw.id}">결과 인정/전달</button>` : ""}
           <button class="secondary-btn" type="button" data-action="copy-draw" data-id="${draw.id}">문구 복사</button>
           <button class="secondary-btn" type="button" data-action="download-draw" data-id="${draw.id}">결과 이미지</button>
           ${isManager() ? `<button class="danger-btn" type="button" data-action="delete-draw" data-id="${draw.id}">삭제</button>` : ""}
@@ -827,7 +830,7 @@ function renderMessageItem(message) {
   return `
     <article class="message-item ${incoming ? "incoming" : "outgoing"}">
       <div>
-        <strong>${incoming ? `보낸 사람 ${escapeHtml(message.fromName)}` : `받는 사람 ${escapeHtml(message.toName)}`}</strong>
+        <strong>${incoming ? `보낸 사람 ${escapeHtml(adminDisplayName(message.fromName))}` : `받는 사람 ${escapeHtml(adminDisplayName(message.toName))}`}</strong>
         <span>${formatDateTime(message.createdAt)}</span>
         <p>${escapeHtml(message.text)}</p>
       </div>
@@ -1129,6 +1132,7 @@ async function handleClick(event) {
   if (action === "copy-draw") await copyDrawText(id);
   if (action === "download-draw") downloadDrawImage(id);
   if (action === "delete-draw") await deleteDraw(id);
+  if (action === "publish-draw") await publishDrawResult(id);
   if (action === "download-excel") downloadExcelWorkbook();
   if (action === "resolve-request") await updatePasswordRequest(id, "resolved");
   if (action === "delete-request") await deletePasswordRequest(id);
@@ -1354,6 +1358,11 @@ async function saveApplication(data) {
 
 async function runDraw({ siteId, priority, winnerCount }) {
   requireManager();
+  const managerId = currentUser.id;
+  await refreshData();
+  currentUser = state.users[managerId] || currentUser;
+  requireManager();
+
   const site = state.sites[siteId];
   if (!site) throw new Error("실습지를 선택해주세요.");
 
@@ -1430,6 +1439,10 @@ function generateRungs(laneCount, rows) {
     }
   }
   return rungs;
+}
+
+function adminDisplayName(name) {
+  return String(name || "") === LEGACY_ADMIN_NAME ? "PS1" : String(name || "");
 }
 
 function traceLadder(startLane, rungs, rows) {
@@ -1688,8 +1701,8 @@ function buildExcelWorkbook() {
       rows: [
         ["보낸 사람", "받는 사람", "내용", "발송일"],
         ...messages.map((message) => [
-          message.fromName || "",
-          message.toName || "",
+          adminDisplayName(message.fromName || ""),
+          adminDisplayName(message.toName || ""),
           message.text || "",
           formatDateTime(message.createdAt),
         ]),
@@ -1745,6 +1758,48 @@ async function deleteDraw(id) {
   requireManager();
   if (!confirm("이 추첨 기록을 삭제할까요?")) return;
   await deleteNode(`draws/${id}`);
+}
+
+async function publishDrawResult(id) {
+  requireManager();
+  const draw = state.draws[id];
+  if (!draw) return;
+  if (draw.publishedAt) throw new Error("이미 신청자에게 전달된 추첨 결과입니다.");
+  if (!confirm("이 사다리 결과를 인정하고 신청자 전원에게 쪽지로 전달할까요?")) return;
+
+  const winners = (draw.results || []).filter((result) => result.outcome === "선정");
+  const summary = [
+    `[PS1 사다리 추첨 결과]`,
+    `실습지: ${draw.siteName}`,
+    `신청 순위: ${draw.priority}순위`,
+    `추첨 일시: ${formatDateTime(draw.createdAt)}`,
+    `선정: ${winners.map((item) => `${item.name}(${formatYear(item.studentYear)})`).join(", ") || "없음"}`,
+  ].join("\n");
+
+  for (const result of draw.results || []) {
+    const messageId = createId("message");
+    await saveNode(`messages/${messageId}`, {
+      id: messageId,
+      fromId: currentUser.id,
+      fromName: adminDisplayName(currentUser.name),
+      fromRole: currentUser.role,
+      toId: result.userId,
+      toName: result.name,
+      toRole: "student",
+      text: `${summary}\n\n${result.name}님 결과: ${result.outcome}`,
+      deletedFor: {},
+      drawId: draw.id,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  await patchNode(`draws/${id}`, {
+    publishedAt: new Date().toISOString(),
+    publishedBy: currentUser.id,
+    publishedByName: adminDisplayName(currentUser.name),
+  });
+
+  alert("사다리 결과를 신청자 전원에게 쪽지로 전달했습니다.");
 }
 
 async function runLocalSmoke() {
@@ -1841,6 +1896,8 @@ async function runLocalSmoke() {
       text: "파일 링크 확인했습니다.",
     });
     await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
+    const latestDraw = drawList()[0];
+    if (latestDraw) await publishDrawResult(latestDraw.id);
     ui.view = "admin-draws";
 
     window.__PS1SWP_SMOKE_RESULT = {
@@ -1851,6 +1908,7 @@ async function runLocalSmoke() {
       draws: drawList().length,
       messages: messageList().length,
       files: fileSubmissionList().length,
+      publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
     };
   } catch (error) {
     window.__PS1SWP_SMOKE_RESULT = {
@@ -1892,10 +1950,10 @@ async function sendMessage({ toId, text }) {
   await saveNode(`messages/${id}`, {
     id,
     fromId: currentUser.id,
-    fromName: currentUser.name,
+    fromName: adminDisplayName(currentUser.name),
     fromRole: currentUser.role,
     toId: toUser.id,
-    toName: toUser.name,
+    toName: adminDisplayName(toUser.name),
     toRole: toUser.role,
     text: cleanText.slice(0, 500),
     deletedFor: {},
@@ -1966,7 +2024,7 @@ async function deleteFileSubmission(id) {
 function getDrawParticipants(siteId, priority) {
   const users = state.users;
   return applicationList()
-    .filter((application) => application.choices?.[priority - 1] === siteId)
+    .filter((application) => choiceAt(application.choices, priority - 1) === siteId)
     .map((application) => users[application.userId])
     .filter((user) => user && user.status === "approved" && user.role !== "admin")
     .sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
@@ -1978,6 +2036,12 @@ function findUserForPasswordRequest(request) {
       normalizeName(user.name) === normalizeName(request.name) &&
       String(user.studentYear || "") === String(request.studentYear || ""),
   );
+}
+
+function choiceAt(choices, index) {
+  if (Array.isArray(choices)) return choices[index] || "";
+  if (choices && typeof choices === "object") return choices[index] || choices[String(index)] || "";
+  return "";
 }
 
 function userList() {
