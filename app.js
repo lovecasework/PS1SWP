@@ -3,7 +3,7 @@ const app = document.querySelector("#app");
 const ADMIN_ID = "admin-pswp";
 const ADMIN_USER = {
   id: ADMIN_ID,
-  name: "PSWP",
+  name: "PS1",
   password: "10041005",
   role: "admin",
   status: "approved",
@@ -92,12 +92,26 @@ async function refreshData() {
 }
 
 async function ensureAdminUser() {
-  const adminExists = Object.values(state.users).some(
-    (user) => user.id === ADMIN_ID || (user.role === "admin" && user.name === "PSWP"),
-  );
+  const admin = state.users[ADMIN_ID];
 
-  if (!adminExists) {
+  if (!admin) {
     await saveNode(`users/${ADMIN_ID}`, ADMIN_USER);
+    return;
+  }
+
+  if (
+    admin.name !== ADMIN_USER.name ||
+    admin.password !== ADMIN_USER.password ||
+    admin.role !== ADMIN_USER.role ||
+    admin.status !== ADMIN_USER.status
+  ) {
+    await patchNode(`users/${ADMIN_ID}`, {
+      name: ADMIN_USER.name,
+      password: ADMIN_USER.password,
+      role: ADMIN_USER.role,
+      status: ADMIN_USER.status,
+      updatedAt: new Date().toISOString(),
+    });
   }
 }
 
@@ -180,10 +194,10 @@ function renderAuthForm() {
             ${YEARS.map((year) => `<option value="${year}">${year}학번</option>`).join("")}
           </select>
         </div>
-        <div class="notice">비밀번호는 8자리 숫자입니다.</div>
+        <div class="notice">비번은 숫자 8자리를 입력하세요.</div>
         <div class="form-row">
           <label for="signup-password">비밀번호</label>
-          ${passwordField("signup-password", "password", "새 비밀번호")}
+          ${passwordField("signup-password", "password", "숫자 8자리")}
         </div>
         <div class="form-row">
           <label for="signup-confirm">비밀번호 확인</label>
@@ -221,7 +235,7 @@ function renderAuthForm() {
     <form class="stack" data-form="login">
       <div class="form-row">
         <label for="login-name">이름 또는 관리자 ID</label>
-        <input id="login-name" name="name" autocomplete="username" required maxlength="20" placeholder="학생은 이름, 관리자는 PSWP" />
+        <input id="login-name" name="name" autocomplete="username" required maxlength="20" placeholder="학생은 이름, 관리자는 PS1을 입력하세요" />
       </div>
       <div class="notice">비밀번호는 8자리 숫자입니다.</div>
       <div class="form-row">
@@ -229,7 +243,7 @@ function renderAuthForm() {
         ${passwordField("login-password", "password", "8자리 숫자")}
       </div>
       <button class="primary-btn" type="submit">입장</button>
-      <p class="admin-hint">관리자 기본값: ID PSWP / 비밀번호 10041005</p>
+      <p class="admin-hint">관리자 기본값: ID PS1 / 비밀번호 10041005</p>
     </form>
   `;
 }
@@ -313,6 +327,7 @@ function renderDashboard() {
           </div>
           <div class="top-actions">
             <span class="sync-badge ${ui.remoteMode}">${escapeHtml(ui.remoteMessage)}</span>
+            ${isManager() ? `<button class="secondary-btn" type="button" data-action="download-excel">엑셀 다운로드</button>` : ""}
             <button class="secondary-btn" type="button" data-action="refresh">새로고침</button>
             <button class="ghost-btn" type="button" data-action="logout">로그아웃</button>
           </div>
@@ -408,6 +423,13 @@ function renderAdminOverview() {
       ${metric("비번 요청", openRequests)}
       ${metric("받은 쪽지", inboxCount)}
       ${metric("파일 제출", fileCount)}
+    </section>
+    <section class="panel export-panel">
+      <div>
+        <h2>전체 결과 엑셀 다운로드</h2>
+        <p>가입자, 비밀번호, 신청 결과, 추첨 결과, 쪽지, Drive 제출 링크를 한 파일로 저장합니다.</p>
+      </div>
+      <button class="primary-btn" type="button" data-action="download-excel">엑셀 다운로드</button>
     </section>
     <section class="panel">
       <div class="panel-head">
@@ -738,7 +760,9 @@ function renderPasswordRequestItem(request) {
         <strong>${escapeHtml(request.name)} · ${formatYear(request.studentYear)}</strong>
         <span>${request.status === "open" ? "대기" : "처리 완료"} · ${formatDateTime(request.createdAt)}</span>
         <p>${escapeHtml(request.message || "메모 없음")}</p>
-        <p class="password-result">비밀번호: <strong>${matched ? escapeHtml(matched.password) : "일치하는 학생 없음"}</strong></p>
+        <p class="password-result">
+          ${matched ? "가입자 확인 완료 · 비밀번호는 전체 엑셀 다운로드에서 확인하세요." : "일치하는 학생이 없습니다."}
+        </p>
       </div>
       <div class="row-actions">
         ${request.status === "open" ? `<button class="secondary-btn" type="button" data-action="resolve-request" data-id="${request.id}">처리 완료</button>` : ""}
@@ -1091,6 +1115,7 @@ async function handleClick(event) {
   if (action === "copy-draw") await copyDrawText(id);
   if (action === "download-draw") downloadDrawImage(id);
   if (action === "delete-draw") await deleteDraw(id);
+  if (action === "download-excel") downloadExcelWorkbook();
   if (action === "resolve-request") await updatePasswordRequest(id, "resolved");
   if (action === "delete-request") await deletePasswordRequest(id);
   if (action === "delete-message") await deleteMessage(id);
@@ -1511,6 +1536,197 @@ function downloadDrawImage(id) {
   link.click();
 }
 
+function downloadExcelWorkbook() {
+  requireManager();
+  const workbook = buildExcelWorkbook();
+  const blob = new Blob([workbook], {
+    type: "application/vnd.ms-excel;charset=utf-8",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `PS1SWP-전체결과-${new Date().toISOString().slice(0, 10)}.xls`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function buildExcelWorkbook() {
+  const users = userList();
+  const sites = siteList();
+  const applications = applicationList();
+  const draws = drawList();
+  const passwordRequests = passwordRequestList();
+  const messages = messageList();
+  const files = fileSubmissionList();
+
+  const sheets = [
+    {
+      name: "전체현황",
+      rows: [
+        ["항목", "값"],
+        ["생성일", formatDateTime(new Date().toISOString())],
+        ["전체 사용자", users.length],
+        ["승인 사용자", users.filter((user) => user.status === "approved").length],
+        ["승인 대기", users.filter((user) => user.status === "pending").length],
+        ["실습지", sites.length],
+        ["신청서", applications.length],
+        ["추첨 기록", draws.length],
+        ["쪽지", messages.length],
+        ["파일 제출", files.length],
+      ],
+    },
+    {
+      name: "가입자_비밀번호",
+      rows: [
+        ["이름", "학번", "역할", "상태", "비밀번호", "가입일", "승인일"],
+        ...users.map((user) => [
+          user.name,
+          formatYear(user.studentYear),
+          roleLabels[user.role] || user.role,
+          statusLabels[user.status] || user.status,
+          user.password || "",
+          formatDateTime(user.createdAt),
+          formatDateTime(user.approvedAt),
+        ]),
+      ],
+    },
+    {
+      name: "실습지",
+      rows: [
+        ["실습지명", "유형", "모집인원", "주소", "연락처", "실습기간", "안내"],
+        ...sites.map((site) => [
+          site.name,
+          site.type || "",
+          site.capacity || "",
+          site.address || "",
+          site.contact || "",
+          site.schedule || "",
+          site.memo || "",
+        ]),
+      ],
+    },
+    {
+      name: "신청결과",
+      rows: [
+        ["이름", "학번", "1순위", "2순위", "3순위", "수정일"],
+        ...applications.map((application) => [
+          application.userName || state.users[application.userId]?.name || "",
+          formatYear(application.studentYear || state.users[application.userId]?.studentYear),
+          siteName(application.choices?.[0]),
+          siteName(application.choices?.[1]),
+          siteName(application.choices?.[2]),
+          formatDateTime(application.updatedAt),
+        ]),
+      ],
+    },
+    {
+      name: "추첨요약",
+      rows: [
+        ["추첨일", "실습지", "순위", "회차", "당첨자수", "신청자수", "선정자", "대기자"],
+        ...draws.map((draw) => [
+          formatDateTime(draw.createdAt),
+          draw.siteName,
+          `${draw.priority}순위`,
+          draw.runNumber || "",
+          draw.capacity || "",
+          draw.participants?.length || "",
+          draw.results?.filter((item) => item.outcome === "선정").map((item) => `${item.name}(${formatYear(item.studentYear)})`).join(", ") || "",
+          draw.results?.filter((item) => item.outcome !== "선정").map((item) => `${item.name}(${formatYear(item.studentYear)})`).join(", ") || "",
+        ]),
+      ],
+    },
+    {
+      name: "추첨상세",
+      rows: [
+        ["추첨일", "실습지", "순위", "회차", "이름", "학번", "결과"],
+        ...draws.flatMap((draw) =>
+          (draw.results || []).map((result) => [
+            formatDateTime(draw.createdAt),
+            draw.siteName,
+            `${draw.priority}순위`,
+            draw.runNumber || "",
+            result.name,
+            formatYear(result.studentYear),
+            result.outcome,
+          ]),
+        ),
+      ],
+    },
+    {
+      name: "비번요청",
+      rows: [
+        ["요청자", "학번", "상태", "메모", "비밀번호", "요청일", "처리일"],
+        ...passwordRequests.map((request) => {
+          const matched = findUserForPasswordRequest(request);
+          return [
+            request.name,
+            formatYear(request.studentYear),
+            request.status === "open" ? "대기" : "처리 완료",
+            request.message || "",
+            matched?.password || "",
+            formatDateTime(request.createdAt),
+            formatDateTime(request.resolvedAt),
+          ];
+        }),
+      ],
+    },
+    {
+      name: "쪽지",
+      rows: [
+        ["보낸 사람", "받는 사람", "내용", "발송일"],
+        ...messages.map((message) => [
+          message.fromName || "",
+          message.toName || "",
+          message.text || "",
+          formatDateTime(message.createdAt),
+        ]),
+      ],
+    },
+    {
+      name: "파일제출",
+      rows: [
+        ["학생", "학번", "제목", "Drive 링크", "상태", "메모", "제출일", "확인일"],
+        ...files.map((file) => [
+          file.userName || "",
+          formatYear(file.studentYear),
+          file.title || "",
+          file.driveUrl || "",
+          file.status === "checked" ? "확인 완료" : "미확인",
+          file.memo || "",
+          formatDateTime(file.createdAt),
+          formatDateTime(file.checkedAt),
+        ]),
+      ],
+    },
+  ];
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#6271C9" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="text"><NumberFormat ss:Format="@"/></Style>
+  </Styles>
+  ${sheets.map(worksheetXml).join("")}
+</Workbook>`;
+}
+
+function worksheetXml(sheet) {
+  return `
+  <Worksheet ss:Name="${xmlEscape(cleanSheetName(sheet.name))}">
+    <Table>
+      ${sheet.rows
+        .map((row, rowIndex) => `
+      <Row>${row.map((cell) => cellXml(cell, rowIndex === 0)).join("")}</Row>`)
+        .join("")}
+    </Table>
+  </Worksheet>`;
+}
+
+function cellXml(value, header = false) {
+  return `<Cell ss:StyleID="${header ? "header" : "text"}"><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`;
+}
+
 async function deleteDraw(id) {
   requireManager();
   if (!confirm("이 추첨 기록을 삭제할까요?")) return;
@@ -1548,7 +1764,7 @@ async function runLocalSmoke() {
       });
     }
 
-    await login({ name: "PSWP", password: "10041005" });
+    await login({ name: "PS1", password: "10041005" });
     for (const student of students) {
       const user = userList().find((item) => item.name === student.name);
       await approveUser(user.id);
@@ -1604,7 +1820,7 @@ async function runLocalSmoke() {
       text: "실습 파일 링크를 제출했습니다.",
     });
 
-    await login({ name: "PSWP", password: "10041005" });
+    await login({ name: "PS1", password: "10041005" });
     const firstStudent = userList().find((user) => user.name === students[0].name);
     await sendMessage({
       toId: firstStudent.id,
@@ -2024,8 +2240,27 @@ function safeFileName(value) {
   return String(value || "result").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
 }
 
+function cleanSheetName(value) {
+  return String(value || "Sheet")
+    .replace(/[\\/?*[\]:]/g, " ")
+    .slice(0, 31);
+}
+
+function siteName(siteId) {
+  return siteId ? state.sites[siteId]?.name || "삭제된 실습지" : "";
+}
+
 function friendlyError(error) {
   return String(error?.message || error || "연결 실패").replace(/^TypeError:\s*/i, "");
+}
+
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function escapeHtml(value) {

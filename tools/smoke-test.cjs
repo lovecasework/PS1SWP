@@ -41,6 +41,7 @@ async function main() {
       files: stdout.includes("files=1"),
       messageMenu: stdout.includes("쪽지"),
       fileMenu: stdout.includes("파일"),
+      excelExport: stdout.includes("download-excel"),
     };
 
     if (Object.values(checks).some((value) => !value)) {
