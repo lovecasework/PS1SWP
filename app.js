@@ -22,9 +22,10 @@ const FORCE_LOCAL = QUERY.get("local") === "1";
 const RUN_SMOKE = FORCE_LOCAL && QUERY.get("smoke") === "1";
 const USE_REMOTE = !FORCE_LOCAL && CONFIG.useRemoteDatabase !== false && Boolean(DB_URL);
 const YEARS = Array.from({ length: 41 }, (_, index) => 2010 + index);
+const LEGACY_MY_DRIVE_URL = "https://drive.google.com/drive/my-drive";
 const DEFAULT_FILE_SETTINGS = {
   folderName: "실습파일",
-  driveUrl: "https://drive.google.com/drive/my-drive",
+  driveUrl: "https://drive.google.com/drive/folders/1Grg6Cmmm0tCQX0op8qO6dMwoToW5lHAQ",
 };
 
 const roleLabels = {
@@ -148,7 +149,7 @@ function restoreSession() {
 function renderLoading() {
   app.innerHTML = `
     <main class="loading-screen">
-      <img src="./assets/ps1-logo.jpg" alt="PS1SWP" class="loading-logo" />
+      <img src="./assets/ps1-logo.png" alt="PS1SWP" class="loading-logo" />
       <p>PS1SWP 준비 중</p>
     </main>
   `;
@@ -174,7 +175,7 @@ function renderAuth() {
   return `
     <main class="auth-layout">
       <section class="brand-panel">
-        <img src="./assets/ps1-logo.jpg" alt="PS1SWP 로고" class="brand-logo" />
+        <img src="./assets/ps1-logo.png" alt="PS1SWP 로고" class="brand-logo" />
         <div>
           <p class="eyebrow">사회복지현장실습</p>
           <h1 class="program-title">PS1 사회복지현장실습 관리 프로그램</h1>
@@ -297,7 +298,7 @@ function renderApprovalGate() {
     <main class="approval-screen">
       <section class="auth-card narrow">
         <div class="mini-brand">
-          <img src="./assets/ps1-logo.jpg" alt="PS1SWP" />
+          <img src="./assets/ps1-logo.png" alt="PS1SWP" />
           <div>
             <p class="eyebrow">PS1SWP</p>
             <h1>${isRejected ? "승인 반려" : "승인 대기"}</h1>
@@ -323,7 +324,7 @@ function renderDashboard() {
     <div class="dashboard">
       <aside class="sidebar">
         <div class="side-brand">
-          <img src="./assets/ps1-logo.jpg" alt="PS1SWP" />
+          <img src="./assets/ps1-logo.png" alt="PS1SWP" />
           <div>
             <strong>PS1SWP</strong>
             <span>사회복지현장실습</span>
@@ -2130,7 +2131,7 @@ async function runLocalSmoke() {
     await login({ name: "PS1", password: "10041005" });
     await saveFileSettings({
       folderName: "실습파일",
-      driveUrl: "https://drive.google.com/drive/my-drive",
+      driveUrl: DEFAULT_FILE_SETTINGS.driveUrl,
     });
     const incomingMessage = messageList().find((message) => message.toId === ADMIN_ID);
     if (incomingMessage) {
@@ -2158,7 +2159,9 @@ async function runLocalSmoke() {
       draws: drawList().length,
       messages: messageList().length,
       files: fileSubmissionList().length,
-      fileSettings: fileUploadSettings().folderName === "실습파일",
+      fileSettings:
+        fileUploadSettings().folderName === "실습파일" &&
+        fileUploadSettings().driveUrl === DEFAULT_FILE_SETTINGS.driveUrl,
       fileWorkflow: fileSubmissionList().some(
         (file) =>
           file.practiceLink === "https://example.com/practice-info" &&
@@ -2440,10 +2443,23 @@ function fileSubmissionList() {
 }
 
 function fileUploadSettings() {
-  return {
+  return normalizeFileUploadSettings(state.settings?.fileUpload);
+}
+
+function normalizeFileUploadSettings(settings) {
+  const next = {
     ...DEFAULT_FILE_SETTINGS,
-    ...(state.settings?.fileUpload || {}),
+    ...(isPlainObject(settings) ? settings : {}),
   };
+
+  if (!settings?.driveUrl || settings.driveUrl === LEGACY_MY_DRIVE_URL) {
+    next.driveUrl = DEFAULT_FILE_SETTINGS.driveUrl;
+  }
+  if (!settings?.folderName) {
+    next.folderName = DEFAULT_FILE_SETTINGS.folderName;
+  }
+
+  return next;
 }
 
 function expectedStudentDriveFolder(user) {
@@ -2563,10 +2579,7 @@ function normalizeDatabase(data) {
   clean.settings = {
     ...clean.settings,
     ...(isPlainObject(data.settings) ? data.settings : {}),
-    fileUpload: {
-      ...DEFAULT_FILE_SETTINGS,
-      ...(isPlainObject(data.settings?.fileUpload) ? data.settings.fileUpload : {}),
-    },
+    fileUpload: normalizeFileUploadSettings(data.settings?.fileUpload),
   };
   return clean;
 }

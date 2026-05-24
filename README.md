@@ -63,7 +63,7 @@ GitHub 저장소 `https://github.com/lovecasework/PS1SWP`에 이 폴더의 파�
 
 ## 실습 파일 제출 방식
 
-관리자는 파일 메뉴에서 학생이 사용할 Google Drive 위치와 폴더 이름을 저장할 수 있습니다. 학생은 지정된 Drive 위치를 열고 `학번_이름` 형식의 폴더를 직접 만든 뒤 워드, PDF 등 실습 관련 파일을 넣습니다. 앱에는 실습처 공유링크, 슈퍼바이저 이메일 주소, 관리자에게 전달할 메모만 제출합니다.
+관리자는 파일 메뉴에서 학생이 사용할 Google Drive 위치와 폴더 이름을 저장할 수 있습니다. 기본 제출 위치는 `실습파일` 폴더(`https://drive.google.com/drive/folders/1Grg6Cmmm0tCQX0op8qO6dMwoToW5lHAQ`)입니다. 학생은 지정된 Drive 위치를 열고 `학번_이름` 형식의 폴더를 직접 만든 뒤 워드, PDF 등 실습 관련 파일을 넣습니다. 앱에는 실습처 공유링크, 슈퍼바이저 이메일 주소, 관리자에게 전달할 메모만 제출합니다.
 
 이 방식은 Google OAuth나 Drive API 연동 없이 운영할 수 있어 Firebase 사용량과 파일 저장 비용을 줄이는 데 가장 단순합니다.
 
