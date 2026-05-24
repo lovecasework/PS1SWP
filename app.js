@@ -1000,7 +1000,7 @@ function renderStudentFiles() {
             <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">구글 드라이브 폴더로 이동</a>
           </div>
           <div class="file-instruction">
-            구글 드라이브 폴더(${escapeHtml(settings.folderName)})에서 자기 이름과 학번으로 폴더를 새로 만들고, 자기 파일을 넣으세요.
+            구글 드라이브 폴더(${escapeHtml(settings.folderName)} 내 00년 하계 혹은 동계 실습)에서 자기 이름과 학번으로 폴더를 새로 만들고, 보내야 할 파일을 넣으세요.
             <strong>예: ${escapeHtml(expectedFolderName || "2017_홍길동")}</strong>
           </div>
         </section>
