@@ -34,7 +34,7 @@
     },
     "fileSubmissions": {
       "$fileId": {
-        ".validate": "newData.hasChildren(['id', 'userId', 'title', 'driveUrl', 'status', 'createdAt'])"
+        ".validate": "newData.hasChildren(['id', 'userId', 'status', 'createdAt'])"
       }
     },
     "settings": {

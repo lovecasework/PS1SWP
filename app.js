@@ -369,7 +369,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -453,7 +453,7 @@ function renderAdminOverview() {
     <section class="panel export-panel">
       <div>
         <h2>전체 결과 엑셀 다운로드</h2>
-        <p>가입자, 비밀번호, 신청 결과, 추첨 결과, 쪽지, Drive 제출 링크를 한 파일로 저장합니다.</p>
+        <p>가입자, 비밀번호, 신청 결과, 추첨 결과, 쪽지, 제출 링크와 이메일을 한 파일로 저장합니다.</p>
       </div>
       <button class="primary-btn" type="button" data-action="download-excel">엑셀 다운로드</button>
     </section>
@@ -965,36 +965,48 @@ function renderMessageDrawAttachment(message) {
 function renderStudentFiles() {
   const submissions = fileSubmissionList().filter((item) => item.userId === currentUser.id);
   const settings = fileUploadSettings();
+  const expectedFolderName = expectedStudentDriveFolder(currentUser);
 
   return `
     <section class="split-layout">
-      <form class="panel stack" data-form="file-submission">
+      <section class="panel stack">
         <div class="panel-head">
           <h2>실습 파일 제출</h2>
-          <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">지정 폴더 열기</a>
+          <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">구글 드라이브 폴더로 이동</a>
         </div>
-        <div class="notice">업로드 위치: ${escapeHtml(settings.folderName)} · 파일은 지정 Google Drive 폴더에 올리고 공유 링크를 제출합니다.</div>
+        <div class="file-instruction">
+          구글 드라이브 폴더(${escapeHtml(settings.folderName)})에서 자기 이름과 학번으로 폴더를 새로 만들고, 자기 파일을 넣으세요.
+          <strong>예: ${escapeHtml(expectedFolderName || "2017_홍길동")}</strong>
+        </div>
+      </section>
+
+      <form class="panel stack" data-form="file-submission">
+        <div class="panel-head">
+          <h2>링크와 메일주소 제출</h2>
+          <span class="count-badge">관리자 확인용</span>
+        </div>
+        <div class="notice">실습처 공유링크, 실습 슈퍼바이저 이메일 주소, 필요한 메모를 관리자에게 제공합니다.</div>
         <div class="form-row">
-          <label for="file-title">파일명 또는 제목</label>
-          <input id="file-title" name="title" required maxlength="60" />
+          <label for="practice-link">실습처 공유링크</label>
+          <input id="practice-link" name="practiceLink" type="url" placeholder="https://..." />
         </div>
         <div class="form-row">
-          <label for="drive-url">Google Drive 공유 링크</label>
-          <input id="drive-url" name="driveUrl" type="url" required placeholder="https://drive.google.com/..." />
+          <label for="supervisor-email">실습 슈퍼바이저 이메일 주소</label>
+          <input id="supervisor-email" name="supervisorEmail" type="email" placeholder="name@example.com" />
         </div>
         <div class="form-row">
           <label for="file-memo">메모</label>
-          <textarea id="file-memo" name="memo" rows="4" maxlength="180"></textarea>
+          <textarea id="file-memo" name="memo" rows="4" maxlength="300" placeholder="관리자에게 전달할 내용을 적어주세요."></textarea>
         </div>
-        <button class="primary-btn" type="submit">링크 제출</button>
+        <button class="primary-btn" type="submit">정보 제출</button>
       </form>
 
       <section class="panel">
         <div class="panel-head">
-          <h2>내 제출 파일</h2>
+          <h2>내 제출 정보</h2>
           <span class="count-badge">${submissions.length}건</span>
         </div>
-        ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출한 파일 링크가 없습니다.")}
+        ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출한 링크와 메일주소가 없습니다.")}
       </section>
     </section>
   `;
@@ -1031,25 +1043,33 @@ function renderFileSubmissions() {
     </section>
     <section class="panel">
       <div class="panel-head">
-        <h2>실습 파일 확인</h2>
+        <h2>제출 정보 확인</h2>
         <span class="count-badge">${submissions.length}건</span>
       </div>
-      ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출된 파일 링크가 없습니다.")}
+      ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출된 링크와 메일주소가 없습니다.")}
     </section>
   `;
 }
 
 function renderFileSubmissionItem(item) {
   const canManage = isManager();
+  const practiceLink = submissionPracticeLink(item);
+  const expectedFolder = item.expectedFolderName || expectedStudentDriveFolder(item);
+  const uploadFolderUrl = item.uploadFolderUrl || "";
   return `
     <article class="list-item file-item">
       <div>
-        <strong>${escapeHtml(item.title)}</strong>
+        <strong>${escapeHtml(item.title || "링크와 메일주소 제출")}</strong>
         <span>${escapeHtml(item.userName)} · ${formatYear(item.studentYear)} · ${item.status === "checked" ? "확인 완료" : "미확인"} · ${formatDateTime(item.createdAt)}</span>
-        ${item.memo ? `<p>${escapeHtml(item.memo)}</p>` : ""}
+        ${expectedFolder ? `<p>학생 Drive 폴더명: <strong>${escapeHtml(expectedFolder)}</strong></p>` : ""}
+        ${practiceLink ? `<p>실습처 공유링크: ${escapeHtml(practiceLink)}</p>` : ""}
+        ${item.supervisorEmail ? `<p>실습 슈퍼바이저 이메일: ${escapeHtml(item.supervisorEmail)}</p>` : ""}
+        ${item.memo ? `<p>메모: ${escapeHtml(item.memo)}</p>` : ""}
       </div>
       <div class="row-actions">
-        <a class="secondary-btn" href="${escapeAttr(item.driveUrl)}" target="_blank" rel="noopener">열기</a>
+        ${uploadFolderUrl ? `<a class="secondary-btn" href="${escapeAttr(uploadFolderUrl)}" target="_blank" rel="noopener">Drive 폴더</a>` : ""}
+        ${practiceLink ? `<a class="secondary-btn" href="${escapeAttr(practiceLink)}" target="_blank" rel="noopener">공유링크</a>` : ""}
+        ${item.supervisorEmail ? `<a class="secondary-btn" href="mailto:${escapeAttr(item.supervisorEmail)}">이메일</a>` : ""}
         ${
           canManage && item.status !== "checked"
             ? `<button class="secondary-btn" type="button" data-action="check-file" data-id="${item.id}">확인</button>`
@@ -1905,12 +1925,14 @@ function buildExcelWorkbook() {
     {
       name: "파일제출",
       rows: [
-        ["학생", "학번", "제목", "Drive 링크", "상태", "메모", "제출일", "확인일"],
+        ["학생", "학번", "학생 폴더명", "실습처 공유링크", "슈퍼바이저 이메일", "Drive 폴더", "상태", "메모", "제출일", "확인일"],
         ...files.map((file) => [
           file.userName || "",
           formatYear(file.studentYear),
-          file.title || "",
-          file.driveUrl || "",
+          file.expectedFolderName || expectedStudentDriveFolder(file),
+          submissionPracticeLink(file),
+          file.supervisorEmail || "",
+          file.uploadFolderUrl || "",
           file.status === "checked" ? "확인 완료" : "미확인",
           file.memo || "",
           formatDateTime(file.createdAt),
@@ -2074,13 +2096,13 @@ async function runLocalSmoke() {
 
     await login({ name: students[0].name, password: students[0].pin });
     await saveFileSubmission({
-      title: "실습 신청서",
-      driveUrl: "https://drive.google.com/file/d/example/view",
+      practiceLink: "https://example.com/practice-info",
+      supervisorEmail: "supervisor@example.com",
       memo: "테스트 제출",
     });
     await sendMessage({
       toId: ADMIN_ID,
-      text: "실습 파일 링크를 제출했습니다.",
+      text: "실습처 링크와 이메일을 제출했습니다.",
     });
 
     await login({ name: "PS1", password: "10041005" });
@@ -2098,7 +2120,7 @@ async function runLocalSmoke() {
     const firstStudent = userList().find((user) => user.name === students[0].name);
     await sendMessage({
       toId: firstStudent.id,
-      text: "파일 링크 확인했습니다.",
+      text: "제출 정보를 확인했습니다.",
     });
     await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
     const latestDraw = drawList()[0];
@@ -2115,6 +2137,12 @@ async function runLocalSmoke() {
       messages: messageList().length,
       files: fileSubmissionList().length,
       fileSettings: fileUploadSettings().folderName === "실습파일",
+      fileWorkflow: fileSubmissionList().some(
+        (file) =>
+          file.practiceLink === "https://example.com/practice-info" &&
+          file.supervisorEmail === "supervisor@example.com" &&
+          file.expectedFolderName === `${students[0].year}_${students[0].name}`,
+      ),
       replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
       drawMessageImages: messageList().filter((message) => message.drawId && state.draws[message.drawId]?.publishedAt).length,
@@ -2226,17 +2254,22 @@ async function deleteMessage(id) {
   });
 }
 
-async function saveFileSubmission({ title, driveUrl, memo }) {
+async function saveFileSubmission({ title, driveUrl, practiceLink, supervisorEmail, memo }) {
   if (!isApprovedUser(currentUser) || isManager(currentUser)) {
-    throw new Error("실습생만 파일 링크를 제출할 수 있습니다.");
+    throw new Error("실습생만 링크와 메일주소를 제출할 수 있습니다.");
   }
 
-  const cleanTitle = String(title || "").trim();
-  const cleanUrl = String(driveUrl || "").trim();
+  const settings = fileUploadSettings();
+  const cleanPracticeLink = String(practiceLink || driveUrl || "").trim();
+  const cleanEmail = String(supervisorEmail || "").trim();
   const cleanMemo = String(memo || "").trim();
+  const expectedFolderName = expectedStudentDriveFolder(currentUser);
 
-  if (!cleanTitle) throw new Error("파일명 또는 제목을 입력해주세요.");
-  if (!isDriveUrl(cleanUrl)) throw new Error("Google Drive 공유 링크를 입력해주세요.");
+  if (!cleanPracticeLink && !cleanEmail && !cleanMemo) {
+    throw new Error("실습처 공유링크, 슈퍼바이저 이메일, 메모 중 하나 이상 입력해주세요.");
+  }
+  if (cleanPracticeLink && !isHttpUrl(cleanPracticeLink)) throw new Error("실습처 공유링크는 https:// 또는 http:// 주소로 입력해주세요.");
+  if (cleanEmail && !isEmail(cleanEmail)) throw new Error("이메일 주소 형식을 확인해주세요.");
 
   const id = createId("file");
   await saveNode(`fileSubmissions/${id}`, {
@@ -2244,14 +2277,19 @@ async function saveFileSubmission({ title, driveUrl, memo }) {
     userId: currentUser.id,
     userName: currentUser.name,
     studentYear: currentUser.studentYear,
-    title: cleanTitle.slice(0, 60),
-    driveUrl: cleanUrl,
-    memo: cleanMemo.slice(0, 180),
+    title: title ? String(title).trim().slice(0, 60) : `${expectedFolderName} 제출 정보`,
+    driveUrl: cleanPracticeLink || settings.driveUrl,
+    practiceLink: cleanPracticeLink,
+    supervisorEmail: cleanEmail,
+    expectedFolderName,
+    uploadFolderName: settings.folderName,
+    uploadFolderUrl: settings.driveUrl,
+    memo: cleanMemo.slice(0, 300),
     status: "submitted",
     createdAt: new Date().toISOString(),
   });
 
-  alert("파일 링크를 제출했습니다.");
+  alert("링크와 메일주소 정보를 제출했습니다.");
 }
 
 async function saveFileSettings({ folderName, driveUrl }) {
@@ -2383,6 +2421,21 @@ function fileUploadSettings() {
     ...DEFAULT_FILE_SETTINGS,
     ...(state.settings?.fileUpload || {}),
   };
+}
+
+function expectedStudentDriveFolder(user) {
+  const year = String(user?.studentYear || "").trim();
+  const name = String(user?.name || user?.userName || "").trim();
+  return [year, name]
+    .filter(Boolean)
+    .join("_")
+    .replace(/[\\/:*?"<>|]/g, "_");
+}
+
+function submissionPracticeLink(item) {
+  if (item.practiceLink) return item.practiceLink;
+  if (item.driveUrl && item.driveUrl !== item.uploadFolderUrl) return item.driveUrl;
+  return "";
 }
 
 function messageRecipients() {
@@ -2563,6 +2616,19 @@ function isDriveUrl(value) {
   } catch {
     return false;
   }
+}
+
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function isEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
 }
 
 function normalizeName(value) {

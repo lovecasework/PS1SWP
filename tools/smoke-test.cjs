@@ -41,6 +41,7 @@ async function main() {
       messages: stdout.includes("messages=6"),
       files: stdout.includes("files=1"),
       fileSettings: stdout.includes("fileSettings=true"),
+      fileWorkflow: stdout.includes("fileWorkflow=true"),
       replies: stdout.includes("replies=1"),
       messageMenu: stdout.includes("쪽지"),
       fileMenu: stdout.includes("파일"),

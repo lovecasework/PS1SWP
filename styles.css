@@ -297,6 +297,25 @@ textarea:focus {
   font-weight: 800;
 }
 
+.file-instruction {
+  padding: 18px;
+  border: 2px solid var(--accent);
+  border-left-width: 8px;
+  border-radius: 8px;
+  background: #f4f6ff;
+  color: var(--ink);
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1.55;
+}
+
+.file-instruction strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--accent-strong);
+  font-size: 1.32rem;
+}
+
 .admin-hint,
 .muted {
   margin: 0;
