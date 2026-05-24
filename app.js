@@ -22,6 +22,10 @@ const FORCE_LOCAL = QUERY.get("local") === "1";
 const RUN_SMOKE = FORCE_LOCAL && QUERY.get("smoke") === "1";
 const USE_REMOTE = !FORCE_LOCAL && CONFIG.useRemoteDatabase !== false && Boolean(DB_URL);
 const YEARS = Array.from({ length: 41 }, (_, index) => 2010 + index);
+const DEFAULT_FILE_SETTINGS = {
+  folderName: "실습파일",
+  driveUrl: "https://drive.google.com/drive/my-drive",
+};
 
 const roleLabels = {
   admin: "관리자",
@@ -69,6 +73,9 @@ function createEmptyState() {
     draws: {},
     messages: {},
     fileSubmissions: {},
+    settings: {
+      fileUpload: { ...DEFAULT_FILE_SETTINGS },
+    },
   };
 }
 
@@ -362,7 +369,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -957,15 +964,16 @@ function renderMessageDrawAttachment(message) {
 
 function renderStudentFiles() {
   const submissions = fileSubmissionList().filter((item) => item.userId === currentUser.id);
+  const settings = fileUploadSettings();
 
   return `
     <section class="split-layout">
       <form class="panel stack" data-form="file-submission">
         <div class="panel-head">
           <h2>실습 파일 제출</h2>
-          <a class="secondary-btn" href="https://drive.google.com/drive/home" target="_blank" rel="noopener">Google Drive 열기</a>
+          <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">지정 폴더 열기</a>
         </div>
-        <div class="notice">파일은 Google Drive에 올리고, 공유 링크만 제출합니다.</div>
+        <div class="notice">업로드 위치: ${escapeHtml(settings.folderName)} · 파일은 지정 Google Drive 폴더에 올리고 공유 링크를 제출합니다.</div>
         <div class="form-row">
           <label for="file-title">파일명 또는 제목</label>
           <input id="file-title" name="title" required maxlength="60" />
@@ -994,8 +1002,33 @@ function renderStudentFiles() {
 
 function renderFileSubmissions() {
   const submissions = fileSubmissionList();
+  const settings = fileUploadSettings();
 
   return `
+    <section class="split-layout">
+      <form class="panel stack" data-form="file-settings">
+        <div class="panel-head">
+          <h2>파일 제출 위치</h2>
+          <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">현재 위치 열기</a>
+        </div>
+        <div class="form-row">
+          <label for="file-folder-name">폴더 이름</label>
+          <input id="file-folder-name" name="folderName" maxlength="60" value="${escapeAttr(settings.folderName)}" required />
+        </div>
+        <div class="form-row">
+          <label for="file-folder-url">Google Drive 폴더 링크</label>
+          <input id="file-folder-url" name="driveUrl" type="url" value="${escapeAttr(settings.driveUrl)}" placeholder="https://drive.google.com/drive/folders/..." required />
+        </div>
+        <button class="primary-btn" type="submit">제출 위치 저장</button>
+      </form>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>현재 제출 위치</h2>
+          <span class="count-badge">${escapeHtml(settings.folderName)}</span>
+        </div>
+        <div class="notice">학생 제출 화면의 업로드 버튼이 이 위치로 연결됩니다.</div>
+      </section>
+    </section>
     <section class="panel">
       <div class="panel-head">
         <h2>실습 파일 확인</h2>
@@ -1321,6 +1354,7 @@ async function handleSubmit(event) {
     if (formType === "message") await sendMessage(data);
     if (formType === "reply-message") await replyMessage(data);
     if (formType === "file-submission") await saveFileSubmission(data);
+    if (formType === "file-settings") await saveFileSettings(data);
   } catch (error) {
     alert(error.message || "처리 중 문제가 생겼습니다.");
   }
@@ -2050,6 +2084,10 @@ async function runLocalSmoke() {
     });
 
     await login({ name: "PS1", password: "10041005" });
+    await saveFileSettings({
+      folderName: "실습파일",
+      driveUrl: "https://drive.google.com/drive/my-drive",
+    });
     const incomingMessage = messageList().find((message) => message.toId === ADMIN_ID);
     if (incomingMessage) {
       await replyMessage({
@@ -2076,6 +2114,7 @@ async function runLocalSmoke() {
       draws: drawList().length,
       messages: messageList().length,
       files: fileSubmissionList().length,
+      fileSettings: fileUploadSettings().folderName === "실습파일",
       replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
       drawMessageImages: messageList().filter((message) => message.drawId && state.draws[message.drawId]?.publishedAt).length,
@@ -2215,6 +2254,25 @@ async function saveFileSubmission({ title, driveUrl, memo }) {
   alert("파일 링크를 제출했습니다.");
 }
 
+async function saveFileSettings({ folderName, driveUrl }) {
+  requireManager();
+
+  const cleanFolderName = String(folderName || "").trim();
+  const cleanUrl = String(driveUrl || "").trim();
+
+  if (!cleanFolderName) throw new Error("폴더 이름을 입력해주세요.");
+  if (!isDriveUrl(cleanUrl)) throw new Error("Google Drive 폴더 링크를 입력해주세요.");
+
+  await saveNode("settings/fileUpload", {
+    folderName: cleanFolderName.slice(0, 60),
+    driveUrl: cleanUrl,
+    updatedAt: new Date().toISOString(),
+    updatedBy: currentUser.id,
+  });
+
+  alert("파일 제출 위치가 저장되었습니다.");
+}
+
 async function updateFileSubmission(id, status) {
   requireManager();
   await patchNode(`fileSubmissions/${id}`, {
@@ -2320,6 +2378,13 @@ function fileSubmissionList() {
   );
 }
 
+function fileUploadSettings() {
+  return {
+    ...DEFAULT_FILE_SETTINGS,
+    ...(state.settings?.fileUpload || {}),
+  };
+}
+
 function messageRecipients() {
   const users = userList().filter((user) => user.id !== currentUser.id && isApprovedUser(user));
   if (isManager()) {
@@ -2419,6 +2484,14 @@ function normalizeDatabase(data) {
   for (const key of Object.keys(clean)) {
     clean[key] = isPlainObject(data[key]) ? data[key] : {};
   }
+  clean.settings = {
+    ...clean.settings,
+    ...(isPlainObject(data.settings) ? data.settings : {}),
+    fileUpload: {
+      ...DEFAULT_FILE_SETTINGS,
+      ...(isPlainObject(data.settings?.fileUpload) ? data.settings.fileUpload : {}),
+    },
+  };
   return clean;
 }
 

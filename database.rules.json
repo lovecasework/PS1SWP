@@ -36,6 +36,11 @@
       "$fileId": {
         ".validate": "newData.hasChildren(['id', 'userId', 'title', 'driveUrl', 'status', 'createdAt'])"
       }
+    },
+    "settings": {
+      "fileUpload": {
+        ".validate": "newData.hasChildren(['folderName', 'driveUrl'])"
+      }
     }
   }
 }

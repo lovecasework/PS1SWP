@@ -40,6 +40,7 @@ async function main() {
       passwordRequest: stdout.includes("비번 요청"),
       messages: stdout.includes("messages=6"),
       files: stdout.includes("files=1"),
+      fileSettings: stdout.includes("fileSettings=true"),
       replies: stdout.includes("replies=1"),
       messageMenu: stdout.includes("쪽지"),
       fileMenu: stdout.includes("파일"),
