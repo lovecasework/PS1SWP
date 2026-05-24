@@ -369,7 +369,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -915,12 +915,14 @@ function renderMessageItem(message) {
   const incoming = message.toId === currentUser.id;
   const visibleToCurrentUser = message.toId === currentUser.id || message.fromId === currentUser.id;
   const canReply = incoming && isManager() && message.fromId && message.fromId !== currentUser.id;
+  const replyContext = renderMessageReplyContext(message);
   const drawAttachment = renderMessageDrawAttachment(message);
   return `
     <article class="message-item ${incoming ? "incoming" : "outgoing"}">
       <div>
         <strong>${incoming ? `보낸 사람 ${escapeHtml(adminDisplayName(message.fromName))}` : `받는 사람 ${escapeHtml(adminDisplayName(message.toName))}`}</strong>
         <span>${formatDateTime(message.createdAt)}</span>
+        ${replyContext}
         <p>${escapeHtml(message.text)}</p>
         ${drawAttachment}
         ${
@@ -941,6 +943,24 @@ function renderMessageItem(message) {
           : ""
       }
     </article>
+  `;
+}
+
+function renderMessageReplyContext(message) {
+  const original = message.replyTo ? state.messages[message.replyTo] : null;
+  if (!original) return "";
+
+  const contextLabel =
+    original.fromId === currentUser.id
+      ? "내가 보낸 쪽지에 대한 답장"
+      : `${adminDisplayName(original.fromName)}님이 보낸 쪽지에 대한 답장`;
+
+  return `
+    <div class="reply-context">
+      <strong>답장 대상: ${escapeHtml(contextLabel)}</strong>
+      <span>${formatDateTime(original.createdAt)}</span>
+      <p>${escapeHtml(shortName(original.text, 130))}</p>
+    </div>
   `;
 }
 
@@ -968,17 +988,27 @@ function renderStudentFiles() {
   const expectedFolderName = expectedStudentDriveFolder(currentUser);
 
   return `
-    <section class="split-layout">
-      <section class="panel stack">
-        <div class="panel-head">
-          <h2>실습 파일 제출</h2>
-          <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">구글 드라이브 폴더로 이동</a>
-        </div>
-        <div class="file-instruction">
-          구글 드라이브 폴더(${escapeHtml(settings.folderName)})에서 자기 이름과 학번으로 폴더를 새로 만들고, 자기 파일을 넣으세요.
-          <strong>예: ${escapeHtml(expectedFolderName || "2017_홍길동")}</strong>
-        </div>
-      </section>
+    <section class="split-layout file-workflow-layout">
+      <div class="panel-column">
+        <section class="panel stack">
+          <div class="panel-head">
+            <h2>실습 파일 제출</h2>
+            <a class="secondary-btn" href="${escapeAttr(settings.driveUrl)}" target="_blank" rel="noopener">구글 드라이브 폴더로 이동</a>
+          </div>
+          <div class="file-instruction">
+            구글 드라이브 폴더(${escapeHtml(settings.folderName)})에서 자기 이름과 학번으로 폴더를 새로 만들고, 자기 파일을 넣으세요.
+            <strong>예: ${escapeHtml(expectedFolderName || "2017_홍길동")}</strong>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>내 제출 정보</h2>
+            <span class="count-badge">${submissions.length}건</span>
+          </div>
+          ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출한 링크와 메일주소가 없습니다.")}
+        </section>
+      </div>
 
       <form class="panel stack" data-form="file-submission">
         <div class="panel-head">
@@ -1000,14 +1030,6 @@ function renderStudentFiles() {
         </div>
         <button class="primary-btn" type="submit">정보 제출</button>
       </form>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>내 제출 정보</h2>
-          <span class="count-badge">${submissions.length}건</span>
-        </div>
-        ${submissions.length ? `<div class="file-list">${submissions.map(renderFileSubmissionItem).join("")}</div>` : emptyState("제출한 링크와 메일주소가 없습니다.")}
-      </section>
     </section>
   `;
 }
@@ -2143,6 +2165,7 @@ async function runLocalSmoke() {
           file.supervisorEmail === "supervisor@example.com" &&
           file.expectedFolderName === `${students[0].year}_${students[0].name}`,
       ),
+      replyContext: messageList().some((message) => message.replyTo && state.messages[message.replyTo]),
       replies: messageList().filter((message) => message.replyTo).length,
       publishedDraws: drawList().filter((draw) => draw.publishedAt).length,
       drawMessageImages: messageList().filter((message) => message.drawId && state.draws[message.drawId]?.publishedAt).length,

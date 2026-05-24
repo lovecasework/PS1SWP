@@ -632,6 +632,16 @@ textarea:focus {
   grid-template-columns: minmax(320px, 0.66fr) minmax(440px, 1.34fr);
 }
 
+.file-workflow-layout {
+  grid-template-columns: minmax(360px, 0.92fr) minmax(480px, 1.08fr);
+}
+
+.panel-column {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
 .narrow-panel {
   width: min(520px, 100%);
 }
@@ -937,6 +947,31 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.reply-context {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d8dffc;
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: #f7f8ff;
+}
+
+.reply-context strong,
+.reply-context span {
+  display: block;
+}
+
+.reply-context strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.reply-context p {
+  margin-top: 6px;
+  color: #56608a;
+  font-size: 0.92rem;
+}
+
 .message-draw-attachment {
   margin-top: 12px;
   padding: 12px;
@@ -999,6 +1034,7 @@ textarea:focus {
   }
 
   .split-layout,
+  .file-workflow-layout,
   .student-layout {
     grid-template-columns: 1fr;
   }
