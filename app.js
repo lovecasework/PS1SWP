@@ -335,7 +335,9 @@ function renderDashboard() {
             .map(
               (item) => `
                 <button class="${ui.view === item.id ? "active" : ""}" type="button" data-action="nav" data-view="${item.id}">
-                  <span>${item.icon}</span>${item.label}
+                  <span>${item.icon}</span>
+                  <strong>${item.label}</strong>
+                  ${item.badge ? `<em class="nav-badge" aria-label="새 알림 ${item.badge}건">${item.badge}</em>` : ""}
                 </button>
               `,
             )
@@ -370,12 +372,13 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
 
 function getNavItems() {
+  const unreadMessages = unreadMessageCount();
   if (isManager()) {
     return [
       { id: "admin-overview", label: "현황", icon: "▦" },
@@ -384,7 +387,7 @@ function getNavItems() {
       { id: "admin-sites", label: "실습지", icon: "+" },
       { id: "admin-applications", label: "신청서", icon: "▤" },
       { id: "admin-draws", label: "사다리", icon: "⌘" },
-      { id: "messages", label: "쪽지", icon: "✉" },
+      { id: "messages", label: "쪽지", icon: "✉", badge: unreadMessages },
       { id: "file-submissions", label: "파일", icon: "↗" },
       { id: "password-requests", label: "비번 요청", icon: "?" },
       { id: "change-password", label: "비번 변경", icon: "◐" },
@@ -394,7 +397,7 @@ function getNavItems() {
   return [
     { id: "student-apply", label: "실습 신청", icon: "1" },
     { id: "student-status", label: "내 신청", icon: "2" },
-    { id: "messages", label: "쪽지", icon: "✉" },
+    { id: "messages", label: "쪽지", icon: "✉", badge: unreadMessages },
     { id: "student-files", label: "파일 제출", icon: "↗" },
     { id: "change-password", label: "비번 변경", icon: "◐" },
   ];
@@ -1285,7 +1288,7 @@ async function handleClick(event) {
   }
 
   if (action === "nav") {
-    ui.view = button.dataset.view;
+    await navigateTo(button.dataset.view);
     render();
     return;
   }
@@ -1337,6 +1340,13 @@ async function handleClick(event) {
   if (action === "delete-file") await deleteFileSubmission(id);
 
   render();
+}
+
+async function navigateTo(view) {
+  ui.view = view;
+  if (view === "messages") {
+    await markVisibleMessagesRead();
+  }
 }
 
 function handleChange(event) {
@@ -2027,6 +2037,9 @@ async function publishDrawResult(id) {
       toRole: "student",
       text: `${summary}\n\n${result.name}님 결과: ${result.outcome}`,
       deletedFor: {},
+      readBy: {
+        [currentUser.id]: true,
+      },
       drawId: draw.id,
       createdAt: new Date().toISOString(),
     });
@@ -2158,6 +2171,7 @@ async function runLocalSmoke() {
       applicationGroups: applicationGroupList().length,
       draws: drawList().length,
       messages: messageList().length,
+      unreadBeforeOpen: unreadMessageCount(),
       files: fileSubmissionList().length,
       fileSettings:
         fileUploadSettings().folderName === "실습파일" &&
@@ -2174,6 +2188,8 @@ async function runLocalSmoke() {
       drawMessageImages: messageList().filter((message) => message.drawId && state.draws[message.drawId]?.publishedAt).length,
       uniqueChoices: applicationList().every((application) => new Set(application.choices || []).size === (application.choices || []).length),
     };
+    await navigateTo("messages");
+    window.__PS1SWP_SMOKE_RESULT.unreadAfterOpen = unreadMessageCount();
   } catch (error) {
     window.__PS1SWP_SMOKE_RESULT = {
       ok: false,
@@ -2221,6 +2237,9 @@ async function sendMessage({ toId, text }) {
     toRole: toUser.role,
     text: cleanText.slice(0, 500),
     deletedFor: {},
+    readBy: {
+      [currentUser.id]: true,
+    },
     createdAt: new Date().toISOString(),
   });
 
@@ -2258,6 +2277,9 @@ async function replyMessage({ messageId, text }) {
     toRole: toUser.role,
     text: cleanText.slice(0, 500),
     deletedFor: {},
+    readBy: {
+      [currentUser.id]: true,
+    },
     replyTo: original.id,
     createdAt: new Date().toISOString(),
   });
@@ -2434,6 +2456,28 @@ function visibleMessageList() {
       (message.fromId === currentUser.id || message.toId === currentUser.id) &&
       !message.deletedFor?.[currentUser.id],
   );
+}
+
+function unreadMessageCount() {
+  if (!currentUser) return 0;
+  return visibleMessageList().filter((message) => isUnreadMessage(message)).length;
+}
+
+function isUnreadMessage(message) {
+  return message.toId === currentUser.id && !message.readBy?.[currentUser.id];
+}
+
+async function markVisibleMessagesRead() {
+  if (!currentUser) return;
+  const unreadMessages = visibleMessageList().filter((message) => isUnreadMessage(message));
+  for (const message of unreadMessages) {
+    await patchNode(`messages/${message.id}`, {
+      readBy: {
+        ...(message.readBy || {}),
+        [currentUser.id]: true,
+      },
+    });
+  }
 }
 
 function fileSubmissionList() {

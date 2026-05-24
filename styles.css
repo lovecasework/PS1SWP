@@ -447,6 +447,7 @@ textarea:focus {
 
 .side-nav button {
   display: flex;
+  position: relative;
   min-height: 44px;
   align-items: center;
   gap: 10px;
@@ -460,6 +461,7 @@ textarea:focus {
 }
 
 .side-nav button span {
+  flex: 0 0 auto;
   display: grid;
   width: 24px;
   height: 24px;
@@ -468,6 +470,27 @@ textarea:focus {
   background: #ffffff;
   color: var(--accent);
   font-size: 0.82rem;
+}
+
+.side-nav button strong {
+  min-width: 0;
+  flex: 1;
+  font: inherit;
+}
+
+.nav-badge {
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 0 7px;
 }
 
 .side-nav button.active {

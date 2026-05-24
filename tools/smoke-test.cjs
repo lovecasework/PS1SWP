@@ -39,6 +39,7 @@ async function main() {
       winner: stdout.includes("선정"),
       passwordRequest: stdout.includes("비번 요청"),
       messages: stdout.includes("messages=6"),
+      messageUnreadBadge: stdout.includes("unreadBeforeOpen=1") && stdout.includes("unreadAfterOpen=0"),
       files: stdout.includes("files=1"),
       fileSettings: stdout.includes("fileSettings=true"),
       fileWorkflow: stdout.includes("fileWorkflow=true"),
