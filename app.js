@@ -27,6 +27,9 @@ const DEFAULT_FILE_SETTINGS = {
   folderName: "실습파일",
   driveUrl: "https://drive.google.com/drive/folders/1Grg6Cmmm0tCQX0op8qO6dMwoToW5lHAQ",
 };
+const DEFAULT_LADDER_ZOOM = 0.78;
+const MIN_LADDER_ZOOM = 0.5;
+const MAX_LADDER_ZOOM = 1.35;
 
 const roleLabels = {
   admin: "관리자",
@@ -46,6 +49,7 @@ let ui = {
   authMode: "login",
   view: "student-apply",
   editingSiteId: "",
+  ladderZoom: {},
   remoteMode: "loading",
   remoteMessage: "데이터 연결 확인 중",
   busy: false,
@@ -372,7 +376,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationGroups=${result.applicationGroups} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationsReset=${result.applicationsReset} applicationGroups=${result.applicationGroups} applicationGroupsBeforeDraw=${result.applicationGroupsBeforeDraw} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -380,16 +384,17 @@ function renderSmokeResult() {
 function getNavItems() {
   const unreadMessages = unreadMessageCount();
   if (isManager()) {
+    const badges = adminNavBadges(unreadMessages);
     return [
-      { id: "admin-overview", label: "현황", icon: "▦" },
-      { id: "admin-approvals", label: "승인", icon: "✓" },
+      { id: "admin-overview", label: "현황", icon: "▦", badge: badges.overview },
+      { id: "admin-approvals", label: "승인", icon: "✓", badge: badges.approvals },
       { id: "admin-users", label: "사용자", icon: "◎" },
       { id: "admin-sites", label: "실습지", icon: "+" },
-      { id: "admin-applications", label: "신청서", icon: "▤" },
-      { id: "admin-draws", label: "사다리", icon: "⌘" },
-      { id: "messages", label: "쪽지", icon: "✉", badge: unreadMessages },
-      { id: "file-submissions", label: "파일", icon: "↗" },
-      { id: "password-requests", label: "비번 요청", icon: "?" },
+      { id: "admin-applications", label: "신청서", icon: "▤", badge: badges.applications },
+      { id: "admin-draws", label: "사다리", icon: "⌘", badge: badges.draws },
+      { id: "messages", label: "쪽지", icon: "✉", badge: badges.messages },
+      { id: "file-submissions", label: "파일", icon: "↗", badge: badges.files },
+      { id: "password-requests", label: "비번 요청", icon: "?", badge: badges.passwordRequests },
       { id: "change-password", label: "비번 변경", icon: "◐" },
     ];
   }
@@ -397,10 +402,36 @@ function getNavItems() {
   return [
     { id: "student-apply", label: "실습 신청", icon: "1" },
     { id: "student-status", label: "내 신청", icon: "2" },
-    { id: "messages", label: "쪽지", icon: "✉", badge: unreadMessages },
+    { id: "messages", label: "쪽지", icon: "✉", badge: navBadge(unreadMessages) },
     { id: "student-files", label: "파일 제출", icon: "↗" },
     { id: "change-password", label: "비번 변경", icon: "◐" },
   ];
+}
+
+function adminNavBadges(unreadMessages) {
+  const pendingUsers = userList().filter((user) => user.status === "pending").length;
+  const submittedApplications = applicationList().length;
+  const unpublishedDraws = drawList().filter((draw) => !draw.publishedAt).length;
+  const uncheckedFiles = fileSubmissionList().filter((item) => item.status !== "checked").length;
+  const openPasswordRequests = passwordRequestList().filter((request) => request.status === "open").length;
+  const overviewTotal =
+    pendingUsers + submittedApplications + unpublishedDraws + uncheckedFiles + openPasswordRequests + unreadMessages;
+
+  return {
+    overview: navBadge(overviewTotal),
+    approvals: navBadge(pendingUsers),
+    applications: navBadge(submittedApplications),
+    draws: navBadge(unpublishedDraws),
+    messages: navBadge(unreadMessages),
+    files: navBadge(uncheckedFiles),
+    passwordRequests: navBadge(openPasswordRequests),
+  };
+}
+
+function navBadge(value) {
+  const count = Number(value || 0);
+  if (!count) return "";
+  return count > 99 ? "99+" : String(count);
 }
 
 function renderCurrentView() {
@@ -776,11 +807,13 @@ function renderDrawCard(draw, compact = false) {
 
 function renderLadderSvg(draw) {
   const laneCount = Math.max(1, draw.participants.length);
-  const width = Math.max(680, laneCount * 92);
-  const height = 420;
-  const top = 80;
-  const bottom = 330;
-  const left = 52;
+  const width = Math.max(560, laneCount * 82);
+  const height = 360;
+  const top = 70;
+  const bottom = 285;
+  const left = 48;
+  const zoom = ladderZoom(draw.id);
+  const displayWidth = Math.round(width * zoom);
   const gap = laneCount === 1 ? 0 : (width - left * 2) / (laneCount - 1);
   const rowGap = (bottom - top) / Math.max(1, draw.rows);
   const x = (lane) => left + lane * gap;
@@ -813,8 +846,14 @@ function renderLadderSvg(draw) {
     .join("");
 
   return `
+    <div class="ladder-tools">
+      <button class="secondary-btn small-btn" type="button" data-action="zoom-draw" data-id="${draw.id}" data-delta="-0.12">축소</button>
+      <span>${Math.round(zoom * 100)}%</span>
+      <button class="secondary-btn small-btn" type="button" data-action="zoom-draw" data-id="${draw.id}" data-delta="0.12">확대</button>
+      <button class="ghost-btn small-btn" type="button" data-action="reset-draw-zoom" data-id="${draw.id}">맞춤</button>
+    </div>
     <div class="ladder-scroll">
-      <svg class="ladder-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="사다리 추첨 결과">
+      <svg class="ladder-svg" style="width: ${displayWidth}px;" viewBox="0 0 ${width} ${height}" role="img" aria-label="사다리 추첨 결과">
         <rect x="0" y="0" width="${width}" height="${height}" rx="8" class="ladder-bg"></rect>
         ${verticals}
         ${rungs}
@@ -1330,6 +1369,16 @@ async function handleClick(event) {
   if (action === "delete-site") await deleteSite(id);
   if (action === "copy-draw") await copyDrawText(id);
   if (action === "download-draw") downloadDrawImage(id);
+  if (action === "zoom-draw") {
+    updateLadderZoom(id, button.dataset.delta);
+    render();
+    return;
+  }
+  if (action === "reset-draw-zoom") {
+    resetLadderZoom(id);
+    render();
+    return;
+  }
   if (action === "delete-draw") await deleteDraw(id);
   if (action === "publish-draw") await publishDrawResult(id);
   if (action === "download-excel") downloadExcelWorkbook();
@@ -2045,13 +2094,18 @@ async function publishDrawResult(id) {
     });
   }
 
+  for (const userId of draw.participantIds || []) {
+    await deleteNode(`applications/${userId}`);
+  }
+
   await patchNode(`draws/${id}`, {
     publishedAt: new Date().toISOString(),
     publishedBy: currentUser.id,
     publishedByName: adminDisplayName(currentUser.name),
+    applicationsResetAt: new Date().toISOString(),
   });
 
-  alert("사다리 결과를 신청자 전원에게 쪽지로 전달했습니다.");
+  alert("사다리 결과를 신청자 전원에게 쪽지로 전달하고, 해당 신청서를 초기화했습니다.");
 }
 
 async function runLocalSmoke() {
@@ -2158,6 +2212,7 @@ async function runLocalSmoke() {
       toId: firstStudent.id,
       text: "제출 정보를 확인했습니다.",
     });
+    const applicationGroupsBeforeDraw = applicationGroupList().length;
     await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
     const latestDraw = drawList()[0];
     if (latestDraw) await publishDrawResult(latestDraw.id);
@@ -2168,7 +2223,9 @@ async function runLocalSmoke() {
       users: userList().length,
       sites: siteList().length,
       applications: applicationList().length,
+      applicationsReset: applicationList().length === 0,
       applicationGroups: applicationGroupList().length,
+      applicationGroupsBeforeDraw,
       draws: drawList().length,
       messages: messageList().length,
       unreadBeforeOpen: unreadMessageCount(),
@@ -2300,6 +2357,24 @@ async function deleteMessage(id) {
       [currentUser.id]: true,
     },
   });
+}
+
+function ladderZoom(drawId) {
+  return clampDecimal(ui.ladderZoom?.[drawId] || DEFAULT_LADDER_ZOOM, MIN_LADDER_ZOOM, MAX_LADDER_ZOOM);
+}
+
+function updateLadderZoom(drawId, delta) {
+  if (!drawId) return;
+  const nextZoom = ladderZoom(drawId) + Number(delta || 0);
+  ui.ladderZoom = {
+    ...(ui.ladderZoom || {}),
+    [drawId]: clampDecimal(nextZoom, MIN_LADDER_ZOOM, MAX_LADDER_ZOOM),
+  };
+}
+
+function resetLadderZoom(drawId) {
+  if (!drawId || !ui.ladderZoom) return;
+  delete ui.ladderZoom[drawId];
 }
 
 async function saveFileSubmission({ title, driveUrl, practiceLink, supervisorEmail, memo }) {
@@ -2719,6 +2794,12 @@ function clampNumber(value, min, max) {
   const number = Number(value);
   if (Number.isNaN(number)) return min;
   return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function clampDecimal(value, min, max) {
+  const number = Number(value);
+  if (Number.isNaN(number)) return min;
+  return Math.max(min, Math.min(max, number));
 }
 
 function createId(prefix) {

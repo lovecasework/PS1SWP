@@ -118,7 +118,6 @@ p {
 }
 
 .brand-panel h1,
-.topbar h1,
 .approval-screen h1 {
   margin: 0;
   color: var(--accent);
@@ -382,6 +381,12 @@ textarea:focus {
   border-color: var(--danger);
 }
 
+.small-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.86rem;
+}
+
 .gate-actions,
 .form-actions,
 .row-actions {
@@ -513,7 +518,15 @@ textarea:focus {
 }
 
 .topbar h1 {
+  margin: 0;
+  color: var(--accent);
+  font-family:
+    Arial,
+    "Noto Sans KR",
+    sans-serif;
   font-size: clamp(1.7rem, 3vw, 2.6rem);
+  font-weight: 900;
+  line-height: 1.1;
 }
 
 .top-actions {
@@ -841,6 +854,22 @@ textarea:focus {
   line-height: 1.5;
 }
 
+.ladder-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.ladder-tools span {
+  min-width: 52px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-align: center;
+}
+
 .ladder-scroll {
   overflow-x: auto;
   padding: 6px 0;
@@ -848,8 +877,8 @@ textarea:focus {
 
 .ladder-svg {
   display: block;
-  min-width: 680px;
-  width: 100%;
+  min-width: 0;
+  max-width: none;
   height: auto;
 }
 
@@ -1027,7 +1056,7 @@ textarea:focus {
 }
 
 .message-draw-attachment .ladder-svg {
-  min-width: 520px;
+  min-width: 0;
 }
 
 .reply-form {

@@ -34,8 +34,10 @@ async function main() {
     const checks = {
       smokePass: stdout.includes("SMOKE_PASS"),
       loginTitle: stdout.includes("PS1SWP"),
-      applicationGroups: stdout.includes("applicationGroups=1"),
+      applicationGroups: stdout.includes("applicationGroupsBeforeDraw=1") && stdout.includes("applicationGroups=0"),
+      applicationsReset: stdout.includes("applications=0") && stdout.includes("applicationsReset=true"),
       ladder: stdout.includes("사다리"),
+      ladderZoom: stdout.includes("ladder-tools") && stdout.includes("축소") && stdout.includes("확대"),
       winner: stdout.includes("선정"),
       passwordRequest: stdout.includes("비번 요청"),
       messages: stdout.includes("messages=6"),
