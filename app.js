@@ -376,7 +376,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationsReset=${result.applicationsReset} applicationGroups=${result.applicationGroups} applicationGroupsBeforeDraw=${result.applicationGroupsBeforeDraw} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationsReset=${result.applicationsReset} activeApplications=${result.activeApplications} waitStudentReapplyActive=${result.waitStudentReapplyActive} firstStudentApplyReset=${result.firstStudentApplyReset} applicationGroups=${result.applicationGroups} applicationGroupsBeforeDraw=${result.applicationGroupsBeforeDraw} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -410,7 +410,7 @@ function getNavItems() {
 
 function adminNavBadges(unreadMessages) {
   const pendingUsers = userList().filter((user) => user.status === "pending").length;
-  const submittedApplications = applicationList().length;
+  const submittedApplications = activeApplicationList().length;
   const unpublishedDraws = drawList().filter((draw) => !draw.publishedAt).length;
   const uncheckedFiles = fileSubmissionList().filter((item) => item.status !== "checked").length;
   const openPasswordRequests = passwordRequestList().filter((request) => request.status === "open").length;
@@ -480,7 +480,7 @@ function renderAdminOverview() {
       ${metric("승인 사용자", approvedStudents)}
       ${metric("부관리자", `${subadmins}/3`)}
       ${metric("실습지", siteList().length)}
-      ${metric("신청서", applicationList().length)}
+      ${metric("신청서", activeApplicationList().length)}
       ${metric("비번 요청", openRequests)}
       ${metric("받은 쪽지", inboxCount)}
       ${metric("파일 제출", fileCount)}
@@ -1148,7 +1148,7 @@ function renderFileSubmissionItem(item) {
 
 function renderStudentApply() {
   const sites = siteList();
-  const application = state.applications[currentUser.id] || {};
+  const application = activeApplicationForUser(currentUser.id) || {};
   const choiceCount = Math.min(3, sites.length);
   const savedChoices = Array.from({ length: choiceCount }, (_, index) => choiceAt(application.choices, index));
   const seenChoices = new Set();
@@ -1221,7 +1221,7 @@ function renderStudentSiteItem(site) {
 }
 
 function renderStudentStatus() {
-  const application = state.applications[currentUser.id];
+  const application = activeApplicationForUser(currentUser.id);
   const relatedDraws = drawList().filter((draw) => draw.publishedAt && draw.participantIds?.includes(currentUser.id));
 
   return `
@@ -2216,6 +2216,18 @@ async function runLocalSmoke() {
     await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
     const latestDraw = drawList()[0];
     if (latestDraw) await publishDrawResult(latestDraw.id);
+    const resetInactiveAfterDraw = activeApplicationList().length === 0 && !activeApplicationForUser(firstStudent.id);
+
+    await login({ name: students[2].name, password: students[2].pin });
+    await saveApplication({
+      priority1: sites[1].id,
+      priority2: sites[2].id,
+      priority3: sites[0].id,
+    });
+    const waitStudent = userList().find((user) => user.name === students[2].name);
+    const waitStudentReapplyActive = Boolean(activeApplicationForUser(waitStudent.id));
+
+    await login({ name: "PS1", password: "10041005" });
     ui.view = "messages";
 
     window.__PS1SWP_SMOKE_RESULT = {
@@ -2223,7 +2235,10 @@ async function runLocalSmoke() {
       users: userList().length,
       sites: siteList().length,
       applications: applicationList().length,
-      applicationsReset: applicationList().length === 0,
+      applicationsReset: resetInactiveAfterDraw,
+      activeApplications: activeApplicationList().length,
+      waitStudentReapplyActive,
+      firstStudentApplyReset: !activeApplicationForUser(firstStudent.id),
       applicationGroups: applicationGroupList().length,
       applicationGroupsBeforeDraw,
       draws: drawList().length,
@@ -2451,7 +2466,7 @@ async function deleteFileSubmission(id) {
 
 function getDrawParticipants(siteId, priority) {
   const users = state.users;
-  return applicationList()
+  return activeApplicationList()
     .filter((application) => choiceAt(application.choices, priority - 1) === siteId)
     .map((application) => users[application.userId])
     .filter((user) => user && user.status === "approved" && !isManager(user))
@@ -2462,7 +2477,7 @@ function applicationGroupList() {
   const users = state.users || {};
   return siteList()
     .map((site) => {
-      const applications = applicationList()
+      const applications = activeApplicationList()
         .filter((application) => choiceAt(application.choices, 0) === site.id)
         .map((application) => ({
           application,
@@ -2507,6 +2522,27 @@ function applicationList() {
   return Object.values(state.applications || {}).sort((a, b) =>
     String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
   );
+}
+
+function activeApplicationList() {
+  return applicationList().filter((application) => !isApplicationResetByDraw(application));
+}
+
+function activeApplicationForUser(userId) {
+  const application = state.applications?.[userId];
+  if (!application || isApplicationResetByDraw(application)) return null;
+  return application;
+}
+
+function isApplicationResetByDraw(application) {
+  const userId = application?.userId;
+  if (!userId) return false;
+  const applicationTime = timestampValue(application.updatedAt);
+  return drawList().some((draw) => {
+    if (!draw.publishedAt || !draw.participantIds?.includes(userId)) return false;
+    const resetTime = timestampValue(draw.applicationsResetAt || draw.publishedAt);
+    return applicationTime < resetTime;
+  });
 }
 
 function passwordRequestList() {
@@ -2835,6 +2871,11 @@ function formatDateTime(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function timestampValue(value) {
+  const time = new Date(value || 0).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function shortName(value, max = 7) {
