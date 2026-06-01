@@ -27,6 +27,11 @@
         ".validate": "newData.hasChildren(['id', 'siteId', 'siteName', 'priority', 'createdAt', 'results'])"
       }
     },
+    "drawBatches": {
+      "$batchId": {
+        ".validate": "newData.hasChildren(['id', 'createdAt', 'totalApplications'])"
+      }
+    },
     "messages": {
       "$messageId": {
         ".validate": "newData.hasChildren(['id', 'fromId', 'toId', 'text', 'createdAt'])"

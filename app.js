@@ -76,6 +76,7 @@ function createEmptyState() {
     applications: {},
     passwordRequests: {},
     draws: {},
+    drawBatches: {},
     messages: {},
     fileSubmissions: {},
     settings: {
@@ -376,7 +377,7 @@ function renderSmokeResult() {
   }
   return `
     <div id="smoke-result" class="smoke-result">
-      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationsReset=${result.applicationsReset} activeApplications=${result.activeApplications} waitStudentReapplyActive=${result.waitStudentReapplyActive} firstStudentApplyReset=${result.firstStudentApplyReset} applicationGroups=${result.applicationGroups} applicationGroupsBeforeDraw=${result.applicationGroupsBeforeDraw} draws=${result.draws} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
+      SMOKE_PASS users=${result.users} sites=${result.sites} applications=${result.applications} applicationsReset=${result.applicationsReset} activeApplications=${result.activeApplications} waitStudentReapplyActive=${result.waitStudentReapplyActive} firstStudentApplyReset=${result.firstStudentApplyReset} applicationGroups=${result.applicationGroups} applicationGroupsBeforeDraw=${result.applicationGroupsBeforeDraw} draws=${result.draws} drawBatches=${result.drawBatches} unassigned=${result.unassigned} messages=${result.messages} unreadBeforeOpen=${result.unreadBeforeOpen} unreadAfterOpen=${result.unreadAfterOpen} files=${result.files} fileSettings=${result.fileSettings} fileWorkflow=${result.fileWorkflow} replyContext=${result.replyContext} replies=${result.replies} publishedDraws=${result.publishedDraws} drawMessageImages=${result.drawMessageImages} uniqueChoices=${result.uniqueChoices}
     </div>
   `;
 }
@@ -412,6 +413,7 @@ function adminNavBadges(unreadMessages) {
   const pendingUsers = userList().filter((user) => user.status === "pending").length;
   const submittedApplications = activeApplicationList().length;
   const unpublishedDraws = drawList().filter((draw) => !draw.publishedAt).length;
+  const pendingDrawWork = submittedApplications + unpublishedDraws;
   const uncheckedFiles = fileSubmissionList().filter((item) => item.status !== "checked").length;
   const openPasswordRequests = passwordRequestList().filter((request) => request.status === "open").length;
   const overviewTotal =
@@ -421,7 +423,7 @@ function adminNavBadges(unreadMessages) {
     overview: navBadge(overviewTotal),
     approvals: navBadge(pendingUsers),
     applications: navBadge(submittedApplications),
-    draws: navBadge(unpublishedDraws),
+    draws: navBadge(pendingDrawWork),
     messages: navBadge(unreadMessages),
     files: navBadge(uncheckedFiles),
     passwordRequests: navBadge(openPasswordRequests),
@@ -688,9 +690,6 @@ function renderApplicationGroupsPanel() {
 
 function renderApplicationGroupCard(group) {
   const { site, applications } = group;
-  const winnerMax = Math.max(1, applications.length);
-  const defaultWinnerCount = Math.min(Number(site.capacity || 1), winnerMax);
-  const inputId = `application-winner-${site.id}`;
   return `
     <article class="application-card">
       <div class="application-card-head">
@@ -698,13 +697,7 @@ function renderApplicationGroupCard(group) {
           <strong>${escapeHtml(site.name)}</strong>
           <span>1순위 신청 ${applications.length}명 · 모집 ${Number(site.capacity || 1)}명</span>
         </div>
-        <form class="application-draw-form" data-form="draw">
-          <input type="hidden" name="siteId" value="${escapeAttr(site.id)}" />
-          <input type="hidden" name="priority" value="1" />
-          <label for="${escapeAttr(inputId)}">당첨자 수</label>
-          <input id="${escapeAttr(inputId)}" name="winnerCount" type="number" min="1" max="${winnerMax}" value="${defaultWinnerCount}" required />
-          <button class="primary-btn" type="submit">이 신청서로 사다리 실행</button>
-        </form>
+        <span class="count-badge">전체 사다리 대상</span>
       </div>
       <div class="application-table">
         ${applications.map(renderApplicationRow).join("")}
@@ -730,37 +723,10 @@ function renderApplicationRow(item) {
 }
 
 function renderAdminDraws() {
-  const sites = siteList();
   return `
+    ${renderBatchDrawPanel()}
     ${renderApplicationGroupsPanel()}
-    <section class="panel">
-      <div class="panel-head">
-        <h2>직접 사다리 추첨</h2>
-        <span class="count-badge">반복 실행 가능</span>
-      </div>
-      <form class="draw-form" data-form="draw">
-        <div class="form-row">
-          <label for="draw-site">실습지</label>
-          <select id="draw-site" name="siteId" required>
-            <option value="">실습지 선택</option>
-            ${sites.map((site) => `<option value="${site.id}">${escapeHtml(site.name)} · ${Number(site.capacity || 1)}명</option>`).join("")}
-          </select>
-        </div>
-        <div class="form-row compact">
-          <label for="draw-priority">순위</label>
-          <select id="draw-priority" name="priority">
-            <option value="1">1순위</option>
-            <option value="2">2순위</option>
-            <option value="3">3순위</option>
-          </select>
-        </div>
-        <div class="form-row compact">
-          <label for="draw-winner-count">당첨자 수</label>
-          <input id="draw-winner-count" name="winnerCount" type="number" min="1" max="99" value="1" required />
-        </div>
-        <button class="primary-btn" type="submit">사다리 타기 실행</button>
-      </form>
-    </section>
+    ${renderDrawBatchHistory()}
     <section class="panel">
       <div class="panel-head">
         <h2>추첨 기록</h2>
@@ -768,6 +734,129 @@ function renderAdminDraws() {
       </div>
       ${renderDrawHistory()}
     </section>
+  `;
+}
+
+function renderBatchDrawPanel() {
+  const applications = activeApplicationList().filter((application) => {
+    const user = state.users[application.userId];
+    return user && user.status === "approved" && !isManager(user);
+  });
+  const groups = applicationGroupList();
+  const applicantCount = applications.length;
+  const sites = siteList();
+  return `
+    <section class="panel batch-panel">
+      <div class="panel-head">
+        <div>
+          <h2>전체 사다리 일괄 실행</h2>
+          <p>마감 후 한 번 실행하면 1순위부터 기관별로 배정하고, 선정 학생과 정원 충족 기관은 다음 라운드에서 제외합니다.</p>
+        </div>
+        <span class="count-badge">${groups.length}개 실습지 · ${applicantCount}명</span>
+      </div>
+      ${
+        applicantCount
+          ? `
+            <form data-form="batch-draw" class="batch-draw-form">
+              <div class="batch-site-list">
+                ${sites.map(renderBatchSiteRow).join("")}
+              </div>
+              <button class="primary-btn" type="submit">전체 사다리 실행 및 자동 전달</button>
+            </form>
+          `
+          : emptyState("현재 접수된 실습 신청서가 없습니다.")
+      }
+    </section>
+  `;
+}
+
+function renderBatchSiteRow(site) {
+  const applications = activeApplicationList().filter((application) =>
+    (application.choices || []).includes(site.id) &&
+    state.users[application.userId]?.status === "approved" &&
+    !isManager(state.users[application.userId]),
+  );
+  const priorityCounts = [0, 1, 2].map(
+    (index) => applications.filter((application) => choiceAt(application.choices, index) === site.id).length,
+  );
+  const inputId = `batch-capacity-${site.id}`;
+  return `
+    <div class="batch-site-row">
+      <div>
+        <strong>${escapeHtml(site.name)}</strong>
+        <span>1순위 ${priorityCounts[0]}명 · 2순위 ${priorityCounts[1]}명 · 3순위 ${priorityCounts[2]}명</span>
+      </div>
+      <label for="${escapeAttr(inputId)}">배정 인원</label>
+      <input id="${escapeAttr(inputId)}" name="capacity-${escapeAttr(site.id)}" type="number" min="0" max="99" value="${Number(site.capacity || 1)}" />
+    </div>
+  `;
+}
+
+function renderDrawBatchHistory() {
+  const batches = drawBatchList().slice(0, 8);
+  if (!batches.length) return "";
+  return `
+    <section class="panel">
+      <div class="panel-head">
+        <h2>전체 배정 결과</h2>
+        <span class="count-badge">${batches.length}회</span>
+      </div>
+      <div class="batch-history">
+        ${batches.map(renderDrawBatchCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDrawBatchCard(batch) {
+  const unassigned = batch.unassigned || [];
+  const roundSummaries = batch.roundSummaries || [];
+  const siteSummaries = batch.siteSummaries || [];
+  return `
+    <article class="batch-card">
+      <div class="batch-card-head">
+        <div>
+          <strong>${formatDateTime(batch.createdAt)} 전체 사다리</strong>
+          <span>신청 ${Number(batch.totalApplications || 0)}명 · 선정 ${(batch.assignedIds || []).length}명 · 최종 미배정 ${unassigned.length}명</span>
+        </div>
+        <span class="count-badge">${Number(batch.maxRound || 3)}라운드</span>
+      </div>
+      <div class="batch-summary-grid">
+        ${roundSummaries
+          .map(
+            (round) => `
+              <div>
+                <strong>${round.round}라운드</strong>
+                <span>${round.drawCount || 0}개 사다리 · 선정 ${round.assignedCount || 0}명</span>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+      <details class="batch-details">
+        <summary>기관별 배정 현황</summary>
+        <div class="mini-table">
+          ${siteSummaries
+            .map(
+              (site) => `
+                <div>
+                  <span>${escapeHtml(site.siteName)}</span>
+                  <strong>정원 ${site.capacity}명 · 선정 ${site.assignedCount}명</strong>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      </details>
+      <div class="unassigned-box">
+        <strong>최종 미배정자</strong>
+        ${
+          unassigned.length
+            ? `<p>${unassigned.map((item) => `${escapeHtml(item.name)}(${formatYear(item.studentYear)})`).join(", ")}</p>`
+            : `<p>최종 미배정자가 없습니다.</p>`
+        }
+      </div>
+    </article>
   `;
 }
 
@@ -1452,6 +1541,7 @@ async function handleSubmit(event) {
     if (formType === "change-password") await changePassword(data);
     if (formType === "site") await saveSite(data);
     if (formType === "application") await saveApplication(data);
+    if (formType === "batch-draw") await runBatchDraw(data);
     if (formType === "draw") await runDraw(data);
     if (formType === "message") await sendMessage(data);
     if (formType === "reply-message") await replyMessage(data);
@@ -1650,6 +1740,152 @@ async function saveApplication(data) {
   });
 
   alert("신청이 저장되었습니다.");
+}
+
+async function runBatchDraw(data) {
+  requireManager();
+  const managerId = currentUser.id;
+  await refreshData();
+  currentUser = state.users[managerId] || currentUser;
+  requireManager();
+
+  const records = activeApplicationList()
+    .map((application) => ({
+      application,
+      user: state.users[application.userId],
+    }))
+    .filter(({ user }) => user && user.status === "approved" && !isManager(user))
+    .sort((a, b) => String(a.user.name).localeCompare(String(b.user.name), "ko"));
+
+  if (!records.length) throw new Error("현재 접수된 실습 신청서가 없습니다.");
+  if (!confirm("현재 접수된 신청서 전체를 기준으로 사다리를 실행하고 결과 쪽지를 자동 발송할까요?")) return;
+
+  const sites = siteList();
+  const capacityBySite = new Map(
+    sites.map((site) => {
+      const key = `capacity-${site.id}`;
+      const rawValue = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : site.capacity;
+      return [site.id, clampNumber(rawValue, 0, 99)];
+    }),
+  );
+  const remainingBySite = new Map(capacityBySite);
+  const maxRound = Math.min(
+    3,
+    Math.max(1, ...records.map(({ application }) => (application.choices || []).filter(Boolean).length)),
+  );
+  const batchId = createId("batch");
+  const batchCreatedAt = new Date().toISOString();
+  const assignedByUser = new Map();
+  const drawRecords = [];
+  const roundSummaries = [];
+
+  for (let round = 1; round <= maxRound; round += 1) {
+    let drawCount = 0;
+    let assignedCount = 0;
+    const drawIds = [];
+
+    for (const site of sites) {
+      const remaining = Number(remainingBySite.get(site.id) || 0);
+      if (remaining <= 0) continue;
+
+      const participants = records
+        .filter(({ application, user }) => !assignedByUser.has(user.id) && choiceAt(application.choices, round - 1) === site.id)
+        .map(({ user }) => user);
+
+      if (!participants.length) continue;
+
+      const winnerCount = Math.min(remaining, participants.length);
+      const draw = {
+        ...createDraw(site, round, participants, winnerCount),
+        batchId,
+        round,
+        priority: round,
+        autoPublished: true,
+        createdAt: batchCreatedAt,
+        publishedAt: batchCreatedAt,
+        publishedBy: currentUser.id,
+        publishedByName: adminDisplayName(currentUser.name),
+        applicationsResetAt: batchCreatedAt,
+      };
+
+      await saveNode(`draws/${draw.id}`, draw);
+      drawRecords.push(draw);
+      drawIds.push(draw.id);
+      drawCount += 1;
+
+      const winners = draw.results.filter((result) => result.outcome === "선정");
+      for (const winner of winners) {
+        if (assignedByUser.has(winner.userId)) continue;
+        assignedByUser.set(winner.userId, {
+          userId: winner.userId,
+          name: winner.name,
+          studentYear: winner.studentYear,
+          siteId: site.id,
+          siteName: site.name,
+          round,
+          priority: round,
+          drawId: draw.id,
+          outcome: winner.outcome,
+        });
+      }
+
+      assignedCount += winners.length;
+      remainingBySite.set(site.id, Math.max(0, remaining - winners.length));
+    }
+
+    roundSummaries.push({ round, drawCount, assignedCount, drawIds });
+  }
+
+  const assigned = Array.from(assignedByUser.values());
+  const assignedIds = assigned.map((item) => item.userId);
+  const unassigned = records
+    .filter(({ user }) => !assignedByUser.has(user.id))
+    .map(({ application, user }) => ({
+      userId: user.id,
+      name: user.name,
+      studentYear: user.studentYear,
+      choices: applicationChoiceLabels(application),
+    }));
+  const relevantSiteIds = new Set(
+    records.flatMap(({ application }) => (application.choices || []).filter(Boolean)),
+  );
+  const siteSummaries = sites
+    .filter((site) => relevantSiteIds.has(site.id) || Number(capacityBySite.get(site.id) || 0) > 0)
+    .map((site) => {
+      const capacity = Number(capacityBySite.get(site.id) || 0);
+      const assignedCount = assigned.filter((item) => item.siteId === site.id).length;
+      return {
+        siteId: site.id,
+        siteName: site.name,
+        capacity,
+        assignedCount,
+        remaining: Math.max(0, capacity - assignedCount),
+      };
+    });
+  const batch = {
+    id: batchId,
+    createdAt: batchCreatedAt,
+    createdBy: currentUser.id,
+    createdByName: adminDisplayName(currentUser.name),
+    maxRound,
+    totalApplications: records.length,
+    applicationIds: records.map(({ user }) => user.id),
+    assignedIds,
+    assigned,
+    unassigned,
+    siteSummaries,
+    roundSummaries,
+  };
+
+  await saveNode(`drawBatches/${batch.id}`, batch);
+  await sendBatchDrawMessages(batch, records, drawRecords);
+
+  for (const { user } of records) {
+    await deleteNode(`applications/${user.id}`);
+  }
+
+  ui.view = "admin-draws";
+  alert(`전체 사다리 배정이 완료되었습니다. 선정 ${assigned.length}명, 최종 미배정 ${unassigned.length}명입니다.`);
 }
 
 async function runDraw({ siteId, priority, winnerCount }) {
@@ -1877,6 +2113,7 @@ function buildExcelWorkbook() {
   const sites = siteList();
   const applications = applicationList();
   const draws = drawList();
+  const drawBatches = drawBatchList();
   const passwordRequests = passwordRequestList();
   const messages = messageList();
   const files = fileSubmissionList();
@@ -1893,6 +2130,7 @@ function buildExcelWorkbook() {
         ["실습지", sites.length],
         ["신청서", applications.length],
         ["추첨 기록", draws.length],
+        ["전체 배정", drawBatches.length],
         ["쪽지", messages.length],
         ["파일 제출", files.length],
       ],
@@ -1972,6 +2210,19 @@ function buildExcelWorkbook() {
             result.outcome,
           ]),
         ),
+      ],
+    },
+    {
+      name: "전체배정",
+      rows: [
+        ["실행일", "신청자수", "선정자수", "최종 미배정자수", "최종 미배정자"],
+        ...drawBatches.map((batch) => [
+          formatDateTime(batch.createdAt),
+          batch.totalApplications || "",
+          (batch.assignedIds || []).length,
+          (batch.unassigned || []).length,
+          (batch.unassigned || []).map((item) => `${item.name}(${formatYear(item.studentYear)})`).join(", "),
+        ]),
       ],
     },
     {
@@ -2108,6 +2359,56 @@ async function publishDrawResult(id) {
   alert("사다리 결과를 신청자 전원에게 쪽지로 전달하고, 해당 신청서를 초기화했습니다.");
 }
 
+async function sendBatchDrawMessages(batch, records, drawRecords) {
+  const drawById = new Map(drawRecords.map((draw) => [draw.id, draw]));
+  const assignedByUser = new Map((batch.assigned || []).map((item) => [item.userId, item]));
+  const baseLines = [
+    "[PS1 전체 사다리 배정 결과]",
+    `전체 실행 일시: ${formatDateTime(batch.createdAt)}`,
+  ];
+
+  for (const { application, user } of records) {
+    const assigned = assignedByUser.get(user.id);
+    const latestUserDraw = [...drawRecords]
+      .reverse()
+      .find((draw) => (draw.participantIds || []).includes(user.id));
+    const choiceLine = `신청 기관: ${applicationChoiceLabels(application).join(" / ")}`;
+    const messageId = createId("message");
+    const text = assigned
+      ? [
+          ...baseLines,
+          "결과: 선정",
+          `배정 실습지: ${assigned.siteName}`,
+          `선정 라운드: ${assigned.round}라운드(${assigned.priority}순위)`,
+          choiceLine,
+        ].join("\n")
+      : [
+          ...baseLines,
+          "결과: 최종 미배정",
+          choiceLine,
+          "관리자 안내에 따라 다른 기관으로 다시 신청해 주세요.",
+        ].join("\n");
+
+    await saveNode(`messages/${messageId}`, {
+      id: messageId,
+      fromId: currentUser.id,
+      fromName: adminDisplayName(currentUser.name),
+      fromRole: currentUser.role,
+      toId: user.id,
+      toName: user.name,
+      toRole: "student",
+      text,
+      deletedFor: {},
+      readBy: {
+        [currentUser.id]: true,
+      },
+      batchId: batch.id,
+      drawId: assigned?.drawId && drawById.has(assigned.drawId) ? assigned.drawId : latestUserDraw?.id || "",
+      createdAt: new Date().toISOString(),
+    });
+  }
+}
+
 async function runLocalSmoke() {
   const originalAlert = window.alert;
   const originalConfirm = window.confirm;
@@ -2213,9 +2514,11 @@ async function runLocalSmoke() {
       text: "제출 정보를 확인했습니다.",
     });
     const applicationGroupsBeforeDraw = applicationGroupList().length;
-    await runDraw({ siteId: sites[0].id, priority: "1", winnerCount: "2" });
-    const latestDraw = drawList()[0];
-    if (latestDraw) await publishDrawResult(latestDraw.id);
+    await runBatchDraw({
+      [`capacity-${sites[0].id}`]: "1",
+      [`capacity-${sites[1].id}`]: "1",
+      [`capacity-${sites[2].id}`]: "0",
+    });
     const resetInactiveAfterDraw = activeApplicationList().length === 0 && !activeApplicationForUser(firstStudent.id);
 
     await login({ name: students[2].name, password: students[2].pin });
@@ -2242,6 +2545,8 @@ async function runLocalSmoke() {
       applicationGroups: applicationGroupList().length,
       applicationGroupsBeforeDraw,
       draws: drawList().length,
+      drawBatches: drawBatchList().length,
+      unassigned: drawBatchList()[0]?.unassigned?.length || 0,
       messages: messageList().length,
       unreadBeforeOpen: unreadMessageCount(),
       files: fileSubmissionList().length,
@@ -2506,6 +2811,15 @@ function choiceAt(choices, index) {
   return "";
 }
 
+function applicationChoiceLabels(application) {
+  return [0, 1, 2]
+    .map((index) => {
+      const name = siteName(choiceAt(application.choices, index));
+      return name ? `${index + 1}순위 ${name}` : "";
+    })
+    .filter(Boolean);
+}
+
 function userList() {
   return Object.values(state.users || {}).sort((a, b) => {
     if (a.id === ADMIN_ID) return -1;
@@ -2553,6 +2867,12 @@ function passwordRequestList() {
 
 function drawList() {
   return Object.values(state.draws || {}).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function drawBatchList() {
+  return Object.values(state.drawBatches || {}).sort((a, b) =>
+    String(b.createdAt || "").localeCompare(String(a.createdAt || "")),
+  );
 }
 
 function messageList() {
